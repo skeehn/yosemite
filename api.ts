@@ -1,6 +1,6 @@
-// Public API of the reusable scene. The future website talks to ValleyScene
-// only through these props and callbacks: props in, events out.
-export type UiMode = 'orbit' | 'explore' | 'scroll';
+// Public API of the reusable scene. Props in, events out.
+// Deliberately small: orbit + scroll, one relief, dither post.
+export type UiMode = 'orbit' | 'scroll';
 export type PaletteMode = 0 | 1 | 2 | 3 | 4 | 5; // full, alpine, sunset, topo, gameboy, 1-bit
 export type SunMode = 'day' | 'sunset';
 
@@ -11,17 +11,14 @@ export type ValleySceneProps = {
   vistaId: string;
   uiMode: UiMode;
   palette: PaletteMode;
-  /** base pixel size 1-8; explore mode adds density on top */
   pixel: number;
   bayerLog: number;
   relief: number;
   /** orbit viewpoint id (from vista.views) */
   view: string;
   spin: boolean;
-  hike: boolean;
   sun: SunMode;
-  tour: boolean;
-  /** null = internal ScrollControls chapters; number 0-1 = host-driven scroll */
+  /** null = internal ScrollControls chapters; 0-1 = host-driven scroll */
   scrollProgress: number | null;
   onFps: (n: number) => void;
   onReady: () => void;
@@ -29,9 +26,4 @@ export type ValleySceneProps = {
   onHoverTerrain: (h: HoverTerrain) => void;
   onChapter: (index: number, label: string) => void;
   onSelectPoi: (id: string) => void;
-};
-
-export type ValleyApi = {
-  flyToView: (id: string) => void;
-  flyToPoi: (id: string) => void;
 };

@@ -1,25 +1,16 @@
 'use client';
-// ValleyScene: the reusable front door. Props in (api.ts), events out.
-// Scene-binary: terrain + dressing + atmosphere + post. No DOM UI here
-// except drei Html markers (positioned by the 3D engine itself).
+// ValleyScene: minimal unbreakable core. One relief, dither post, dolly-explore.
+// The camera always stays outside the geometry: no void, no clipping, no locks.
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, ScrollControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { VISTAS } from '../data/vistas';
 import { loadDepthTable, type DepthTable } from '../lib/depth-table';
-import {
-  OrbitRig,
-  DragLook,
-  MoveRig,
-  TourRig,
-  ScrollPathRigInternal,
-  ScrollPathRigExternal,
-  type FlyGoal,
-} from './controls';
+import { OrbitRig, ScrollPathRigInternal, ScrollPathRigExternal, type FlyGoal } from './controls';
 import { Terrain } from './terrain';
-import { Trees, Falls, PoiMarkers, Ground, preloadVista } from './dressing';
-import type { ValleySceneProps, ValleyApi, SunMode } from '../api';
+import { Plinth, Ground, Beacons } from './dressing';
+import type { ValleySceneProps, SunMode } from '../api';
 import { POST_VERT, POST_FRAG } from './post-shader';
 
 export { POST_SHADER_SOURCE } from './post-shader';
@@ -145,24 +136,16 @@ function PostPass({
   return null;
 }
 
-export default function ValleyScene(
-  props: ValleySceneProps & {
-    apiRef: React.MutableRefObject<ValleyApi | null>;
-    onTourEnd: () => void;
-  }
-) {
+export default function ValleyScene(props: ValleySceneProps) {
   const {
-    vistaId, uiMode, palette, pixel, bayerLog, relief, view, spin, hike, sun, tour,
-    scrollProgress, apiRef, onFps, onReady, onHoverPoi, onHoverTerrain, onChapter, onSelectPoi, onTourEnd,
+    vistaId, uiMode, palette, pixel, bayerLog, relief, view, spin, sun,
+    scrollProgress, onFps, onReady, onHoverPoi, onHoverTerrain, onChapter, onSelectPoi,
   } = props;
   const vista = VISTAS.find((v) => v.id === vistaId) ?? VISTAS[0];
   const planeH = vista.planeW / vista.planeAspect;
   const [table, setTable] = useState<DepthTable | null>(null);
   const [viewState, setViewState] = useState(view);
   const [poiGoal, setPoiGoal] = useState<FlyGoal>(null);
-  const flyGoal = useRef<FlyGoal>(null);
-  const tourEnd = useRef(onTourEnd);
-  tourEnd.current = onTourEnd;
 
   useEffect(() => {
     setViewState(view);
@@ -174,32 +157,11 @@ export default function ValleyScene(
     loadDepthTable(vista.depth).then((t) => {
       if (on) setTable(t);
     });
-    // warm the next vistas in the background
-    for (const v of VISTAS) {
-      if (v.id !== vista.id) {
-        preloadVista(v.photo, v.depth);
-        void loadDepthTable(v.depth);
-      }
-    }
     return () => {
       on = false;
     };
   }, [vista]);
 
-  useEffect(() => {
-    apiRef.current = {
-      flyToView: (id: string) => setViewState(id),
-      flyToPoi: (id: string) => {
-        const poi = vista.pois.find((p) => p.id === id);
-        if (poi) flyGoal.current = { pos: poi.goal.pos, tgt: poi.goal.tgt };
-      },
-    };
-    return () => {
-      apiRef.current = null;
-    };
-  }, [apiRef, vista]);
-
-  const explore = uiMode === 'explore';
   const scrolling = uiMode === 'scroll';
   const viewList = useMemo(() => Object.values(vista.views), [vista]);
   const orbitGoal: FlyGoal = useMemo(() => {
@@ -207,8 +169,6 @@ export default function ValleyScene(
     const v = vista.views[viewState] ?? vista.views[vista.defaultView];
     return v ? { pos: v.pos, tgt: v.tgt } : null;
   }, [vista, viewState, poiGoal]);
-
-  const stopTour = () => tourEnd.current();
 
   return (
     <Canvas
@@ -231,62 +191,38 @@ export default function ValleyScene(
           table={table}
           onHoverTerrain={onHoverTerrain}
         />
-        {vista.trees && <Trees table={table} relief={relief} planeW={vista.planeW} planeH={planeH} />}
       </Suspense>
-      {vista.falls && (
-        <Falls strip={vista.falls} table={table} relief={relief} planeW={vista.planeW} planeH={planeH} />
-      )}
+      <Plinth planeW={vista.planeW} planeH={planeH} />
       <Ground />
-      <PoiMarkers
+      <Beacons
         pois={vista.pois}
         table={table}
         relief={relief}
         planeW={vista.planeW}
         planeH={planeH}
-        explore={explore}
         onVisit={(id) => {
-          if (explore) {
-            const poi = vista.pois.find((p) => p.id === id);
-            if (poi) flyGoal.current = { pos: poi.goal.pos, tgt: poi.goal.tgt };
-          } else {
-            const poi = vista.pois.find((p) => p.id === id);
-            if (poi) setPoiGoal({ pos: poi.goal.pos, tgt: poi.goal.tgt });
-          }
+          const poi = vista.pois.find((p) => p.id === id);
+          if (poi && !scrolling) setPoiGoal({ pos: poi.goal.pos, tgt: poi.goal.tgt });
           onSelectPoi(id);
         }}
         onHover={onHoverPoi}
       />
-      {!explore && !scrolling && (
+      {!scrolling && (
         <OrbitControls
           makeDefault
           enableDamping
-          enablePan={false}
+          enablePan
+          screenSpacePanning={false}
           autoRotate={spin}
           autoRotateSpeed={0.7}
-          minDistance={6}
-          maxDistance={24}
-          minPolarAngle={0.65}
-          maxPolarAngle={1.78}
+          zoomToCursor
+          minDistance={3.5}
+          maxDistance={26}
+          minPolarAngle={0.6}
+          maxPolarAngle={1.8}
         />
       )}
-      <OrbitRig goal={orbitGoal} enabled={!explore && !scrolling} />
-      {explore && (
-        <>
-          <DragLook enabled={!tour} />
-          <MoveRig
-            enabled
-            table={table}
-            relief={relief}
-            planeW={vista.planeW}
-            planeH={planeH}
-            hike={hike}
-            onInteract={() => {
-              if (tour) stopTour();
-            }}
-          />
-          <TourRig active={tour} views={viewList} onDone={stopTour} />
-        </>
-      )}
+      <OrbitRig goal={orbitGoal} enabled={!scrolling} />
       {scrolling &&
         (scrollProgress == null ? (
           <ScrollControls pages={Math.max(2, viewList.length)} damping={0.25}>

@@ -1,8 +1,8 @@
 'use client';
 import dynamic from 'next/dynamic';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { VISTAS } from '../data/vistas';
-import type { PaletteMode, UiMode, SunMode, ValleyApi, HoverPoi, HoverTerrain } from '../api';
+import type { PaletteMode, UiMode, SunMode, HoverPoi, HoverTerrain } from '../api';
 import { POST_SHADER_SOURCE } from '../scene/post-shader';
 
 const ValleyScene = dynamic(() => import('../scene/valley-scene'), { ssr: false });
@@ -21,16 +21,13 @@ export default function Page() {
   const [vistaId, setVistaId] = useState('tunnel-view');
   const [mode, setMode] = useState<UiMode>('orbit');
   const [pal, setPal] = useState<PaletteMode>(0);
-  const [pixel, setPixel] = useState(3);
+  const [pixel, setPixel] = useState(2);
   const [bayer, setBayer] = useState(3);
   const [relief, setRelief] = useState(1);
   const [view, setView] = useState('valley');
   const [spin, setSpin] = useState(true);
   const [sun, setSun] = useState<SunMode>('day');
-  const [hike, setHike] = useState(false);
-  const [tour, setTour] = useState(false);
   const [tune, setTune] = useState(false);
-  const [entered, setEntered] = useState(false);
   const [fps, setFps] = useState('— fps');
   const [ready, setReady] = useState(false);
   const [showShader, setShowShader] = useState(false);
@@ -38,20 +35,16 @@ export default function Page() {
   const [chapter, setChapter] = useState('');
   const [hoverPoi, setHoverPoi] = useState<HoverPoi>(null);
   const [hoverTerrain, setHoverTerrain] = useState<HoverTerrain>(null);
-  const apiRef = useRef<ValleyApi | null>(null);
 
   const vista = VISTAS.find((v) => v.id === vistaId) ?? VISTAS[0];
-  const exploring = mode === 'explore';
   const scrolling = mode === 'scroll';
-  const effPixel = Math.min(8, pixel + (exploring ? 2 : 0));
 
   const onFps = useCallback((n: number) => setFps(n + ' fps'), []);
   const onReady = useCallback(() => setReady(true), []);
   const onHoverPoi = useCallback((h: HoverPoi) => setHoverPoi(h), []);
   const onHoverTerrain = useCallback((h: HoverTerrain) => setHoverTerrain(h), []);
-  const onChapter = useCallback((i: number, label: string) => setChapter(label), []);
+  const onChapter = useCallback((_i: number, label: string) => setChapter(label), []);
   const onSelectPoi = useCallback((_id: string) => {}, []);
-  const onTourEnd = useCallback(() => setTour(false), []);
 
   useEffect(() => {
     document.body.classList.toggle('chrome-hidden', uiHidden);
@@ -72,18 +65,6 @@ export default function Page() {
     const v = VISTAS.find((x) => x.id === id)!;
     setVistaId(id);
     setView(v.defaultView);
-    setTour(false);
-  };
-  const pickMode = (m: UiMode) => {
-    if (m === 'explore') {
-      setMode('explore');
-      setSpin(false);
-      setEntered(false);
-      setTour(false);
-    } else {
-      setMode(m);
-      setTour(false);
-    }
   };
 
   return (
@@ -93,30 +74,26 @@ export default function Page() {
           vistaId={vistaId}
           uiMode={mode}
           palette={pal}
-          pixel={effPixel}
+          pixel={pixel}
           bayerLog={bayer}
           relief={relief}
           view={view}
-          spin={spin}
-          hike={hike}
+          spin={spin && !scrolling}
           sun={sun}
-          tour={tour}
           scrollProgress={null}
-          apiRef={apiRef}
           onFps={onFps}
           onReady={onReady}
           onHoverPoi={onHoverPoi}
           onHoverTerrain={onHoverTerrain}
           onChapter={onChapter}
           onSelectPoi={onSelectPoi}
-          onTourEnd={onTourEnd}
         />
       </div>
       <div id="veil" className={ready ? 'hidden' : ''}>CARVING VALLEY…</div>
 
       <header className="hud top">
-        <div className="brand">YOSEMITE<span>{vista.label} · 3D</span></div>
-        <div className="coords">{fps} · {scrolling && chapter ? chapter : exploring ? (tour ? 'TOUR' : hike ? 'HIKE' : 'FLY') : 'ORBIT'}</div>
+        <div className="brand">YOSEMITE<span>{vista.label} · DIORAMA</span></div>
+        <div className="coords">{fps} · {scrolling && chapter ? chapter : 'DOLLY'}</div>
       </header>
 
       {hoverPoi && (
@@ -125,32 +102,17 @@ export default function Page() {
           <div className="poicard-sub">{hoverPoi.blurb}</div>
         </div>
       )}
-      {hoverTerrain && !exploring && (
+      {hoverTerrain && (
         <div className="hud chip">RELIEF {hoverTerrain.elevPct}%</div>
       )}
       {scrolling && chapter && (
         <div className="hud chapter">{chapter}</div>
       )}
 
-      {exploring && !entered && ready && (
-        <div className="hud enter">
-          <div className="enter-card">
-            <div className="enter-title">ENTER {vista.label}</div>
-            <div className="enter-sub">drag to look · WASD to move · SHIFT fast · ESC-free, H hides UI</div>
-            <div className="enter-row">
-              <button className={!hike ? 'on' : ''} onClick={() => setHike(false)}>FLY</button>
-              <button className={hike ? 'on' : ''} onClick={() => setHike(true)}>HIKE</button>
-            </div>
-            <button className="enter-btn" onClick={() => setEntered(true)}>ENTER</button>
-          </div>
-        </div>
-      )}
-
       <nav className="hud dock">
         <div className="seg">
-          <button className={mode === 'orbit' ? 'on' : ''} onClick={() => pickMode('orbit')}>ORBIT</button>
-          <button className={exploring ? 'on explore-only' : 'explore-only'} onClick={() => pickMode('explore')}>EXPLORE</button>
-          <button className={scrolling ? 'on' : ''} onClick={() => pickMode('scroll')}>SCROLL</button>
+          <button className={mode === 'orbit' ? 'on' : ''} onClick={() => setMode('orbit')}>DOLLY</button>
+          <button className={scrolling ? 'on' : ''} onClick={() => setMode('scroll')}>SCROLL</button>
         </div>
         <span className="div" />
         <div className="dots">
@@ -174,25 +136,18 @@ export default function Page() {
             {!scrolling && (
               <div className="tune-row">
                 {Object.entries(vista.views).map(([id, v]) => (
-                  <button key={id} className={view === id ? 'on' : ''} onClick={() => { setView(id); if (exploring) apiRef.current?.flyToView(id); }}>
+                  <button key={id} className={view === id ? 'on' : ''} onClick={() => setView(id)}>
                     {v.label}
                   </button>
                 ))}
               </div>
             )}
-            <label>PIXEL <input type="range" min={1} max={8} step={1} value={pixel} onChange={(e) => setPixel(Number(e.target.value))} /><b>{effPixel}</b></label>
+            <label>PIXEL <input type="range" min={1} max={8} step={1} value={pixel} onChange={(e) => setPixel(Number(e.target.value))} /><b>{pixel}</b></label>
             <label>BAYER <input type="range" min={1} max={3} step={1} value={bayer} onChange={(e) => setBayer(Number(e.target.value))} /><b>{BAYER_NAMES[bayer]}</b></label>
             <label>RELIEF <input type="range" min={20} max={200} step={1} value={Math.round(relief * 100)} onChange={(e) => setRelief(Number(e.target.value) / 100)} /><b>{relief.toFixed(1)}x</b></label>
             <div className="tune-row">
               <button className={sun === 'day' ? 'on' : ''} onClick={() => setSun('day')}>DAY</button>
               <button className={sun === 'sunset' ? 'on' : ''} onClick={() => setSun('sunset')}>SUNSET</button>
-              {exploring && (
-                <>
-                  <button className={!hike ? 'on' : ''} onClick={() => setHike(false)}>FLY</button>
-                  <button className={hike ? 'on' : ''} onClick={() => setHike(true)}>HIKE</button>
-                  <button className={tour ? 'on' : ''} onClick={() => setTour(!tour)}>TOUR</button>
-                </>
-              )}
               {mode === 'orbit' && (
                 <button className={spin ? 'on' : ''} onClick={() => setSpin(!spin)}>SPIN</button>
               )}
@@ -200,7 +155,7 @@ export default function Page() {
               <button onClick={() => setUiHidden(true)}>HIDE</button>
             </div>
             <div className="vista-blurb">{vista.blurb} · photo {vista.credit}</div>
-            <div className="hint">drag orbit · wheel zoom · H hides interface · depth baked from photo</div>
+            <div className="hint">scroll zooms to cursor · drag pans · right-drag orbits · H hides interface</div>
           </div>
         )}
       </nav>
