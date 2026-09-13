@@ -3,8 +3,18 @@ import { Suspense, useEffect, useMemo, useRef } from 'react';
 import { Canvas, useFrame, useLoader, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
+import { ExploreControls, type FlyGoal } from './explore';
+import { Trees, Falls, PoiMarkers, poiGoal, Ground } from './dressing';
 
-export type PaletteMode = 0 | 1 | 2 | 3 | 4; // full, alpine, sunset, topo, gameboy
+export type PaletteMode = 0 | 1 | 2 | 3 | 4 | 5; // full, alpine, sunset, topo, gameboy, 1-bit
+export type UiMode = 'orbit' | 'explore';
+export type SunMode = 'day' | 'sunset';
+
+export type ValleyApi = {
+  lock: () => void;
+  unlock: () => void;
+  flyTo: (id: string) => void;
+};
 
 const POST_VERT = `
 varying vec2 vUv;
@@ -79,8 +89,13 @@ void main(){
   float th = bayer(gl_FragCoord.xy, u_bayerLog);
   vec3 c = texture2D(tD, vUv).rgb;
   vec3 col;
+  bool linear = true;
   if(u_mode == 0){
     col = floor(c * 5.0 + th) / 5.0;
+  } else if(u_mode == 5){
+    float lum = dot(c, vec3(0.299, 0.587, 0.114));
+    col = mix(vec3(0.066,0.062,0.055), vec3(0.937,0.914,0.863), step(th, lum));
+    linear = false;
   } else {
     float lum = dot(c, vec3(0.299, 0.587, 0.114));
     float steps = (u_mode == 4) ? 4.0 : 6.0;
@@ -92,7 +107,7 @@ void main(){
       col *= (1.0 - smoothstep(0.06, 0.02, cc) * 0.25);
     }
   }
-  col = pow(max(col, 0.0), vec3(0.4545));
+  if(linear){ col = pow(max(col, 0.0), vec3(0.4545)); }
   vec2 ndc = vUv - 0.5;
   col *= mix(0.78, 1.0, smoothstep(0.65, 0.2, length(ndc)));
   col += (hash(gl_FragCoord.xy + fract(u_time)) - 0.5) * 0.035;
@@ -132,23 +147,84 @@ const GOALS: Record<string, { pos: [number, number, number]; tgt: [number, numbe
   dome: { pos: [1.5, 2.2, 9.5], tgt: [0.5, 1.2, -1] },
 };
 
-function Rig({ view }: { view: string }) {
+export function orbitGoal(id: string): FlyGoal {
+  return GOALS[id] ?? GOALS.valley;
+}
+
+function Rig({ view, enabled }: { view: string; enabled: boolean }) {
   const controls = useThree((s) => s.controls) as unknown as {
     object: THREE.Camera;
     target: THREE.Vector3;
-    update: () => void;
   } | null;
   const goal = useMemo(() => {
     const g = GOALS[view] ?? GOALS.valley;
     return { pos: new THREE.Vector3(...g.pos), tgt: new THREE.Vector3(...g.tgt) };
   }, [view]);
   useFrame((_, dt) => {
-    if (!controls) return;
+    if (!enabled || !controls) return;
     const k = 1 - Math.exp(-3 * Math.min(dt, 0.05));
     controls.object.position.lerp(goal.pos, k);
     controls.target.lerp(goal.tgt, k);
   });
   return null;
+}
+
+type SunPreset = {
+  sunColor: THREE.Color;
+  sunInt: number;
+  sunPos: THREE.Vector3;
+  ambColor: THREE.Color;
+  ambInt: number;
+  bg: THREE.Color;
+  fogNear: number;
+  fogFar: number;
+};
+const SUNS: Record<SunMode, SunPreset> = {
+  day: {
+    sunColor: new THREE.Color('#fff4e0'), sunInt: 1.4, sunPos: new THREE.Vector3(-5, 7, 6),
+    ambColor: new THREE.Color('#ffffff'), ambInt: 1.0,
+    bg: new THREE.Color('#0d1417'), fogNear: 16, fogFar: 34,
+  },
+  sunset: {
+    sunColor: new THREE.Color('#ff9a4d'), sunInt: 1.2, sunPos: new THREE.Vector3(-8, 2.2, 4),
+    ambColor: new THREE.Color('#8a7a9a'), ambInt: 0.6,
+    bg: new THREE.Color('#171020'), fogNear: 14, fogFar: 30,
+  },
+};
+
+function SunRig({ sun }: { sun: SunMode }) {
+  const scene = useThree((s) => s.scene);
+  const dir = useRef<THREE.DirectionalLight>(null!);
+  const amb = useRef<THREE.AmbientLight>(null!);
+  useFrame((_, rawDt) => {
+    const dt = Math.min(rawDt, 0.05);
+    const t = SUNS[sun];
+    const k = 1 - Math.exp(-2.5 * dt);
+    const damp = (cur: number, goal: number) => cur + (goal - cur) * k;
+    if (dir.current) {
+      dir.current.color.lerp(t.sunColor, k);
+      dir.current.intensity = damp(dir.current.intensity, t.sunInt);
+      dir.current.position.lerp(t.sunPos, k);
+    }
+    if (amb.current) {
+      amb.current.color.lerp(t.ambColor, k);
+      amb.current.intensity = damp(amb.current.intensity, t.ambInt);
+    }
+    const bg = scene.background as THREE.Color | null;
+    if (bg && bg.isColor) bg.lerp(t.bg, k);
+    const fog = scene.fog as THREE.Fog | null;
+    if (fog && fog.isFog) {
+      fog.color.lerp(t.bg, k);
+      fog.near = damp(fog.near, t.fogNear);
+      fog.far = damp(fog.far, t.fogFar);
+    }
+  });
+  return (
+    <>
+      <directionalLight ref={dir} position={[-5, 7, 6]} intensity={1.4} />
+      <ambientLight ref={amb} intensity={1.0} />
+    </>
+  );
 }
 
 function PostPass({
@@ -234,8 +310,14 @@ export default function ValleyCanvas({
   relief,
   view,
   spin,
+  uiMode,
+  hike,
+  sun,
+  apiRef,
   onFps,
   onReady,
+  onLockChange,
+  onVisitPoi,
 }: {
   palette: PaletteMode;
   pixel: number;
@@ -243,36 +325,78 @@ export default function ValleyCanvas({
   relief: number;
   view: string;
   spin: boolean;
+  uiMode: UiMode;
+  hike: boolean;
+  sun: SunMode;
+  apiRef: React.MutableRefObject<ValleyApi | null>;
+  onVisitPoi: (id: string) => void;
   onFps: (n: number) => void;
   onReady: () => void;
+  onLockChange: (locked: boolean) => void;
 }) {
+  const plcRef = useRef<{ lock: () => void; unlock: () => void } | null>(null);
+  const flyGoal = useRef<FlyGoal>(null);
+  const explore = uiMode === 'explore';
+
+  useEffect(() => {
+    apiRef.current = {
+      lock: () => plcRef.current?.lock(),
+      unlock: () => plcRef.current?.unlock(),
+      flyTo: (id: string) => {
+        flyGoal.current = poiGoal(id);
+      },
+    };
+    return () => {
+      apiRef.current = null;
+    };
+  }, [apiRef]);
+
+  const handleVisit = (id: string) => {
+    if (explore) flyGoal.current = poiGoal(id);
+    else onVisitPoi(id);
+  };
+
   return (
     <Canvas
       flat
       dpr={[1, 1.75]}
-      camera={{ fov: 42, position: [0, 1.1, 12], near: 0.1, far: 100 }}
+      camera={{ fov: 42, position: [0, 1.1, 12], near: 0.1, far: 200 }}
       gl={{ antialias: false, powerPreference: 'high-performance' }}
       onCreated={onReady}
     >
-      <color attach="background" args={['#0a0f14']} />
-      <fog attach="fog" args={['#0a0f14', 16, 34]} />
-      <ambientLight intensity={1.0} />
-      <directionalLight position={[-5, 7, 6]} intensity={1.4} />
+      <color attach="background" args={['#0d1417']} />
+      <fog attach="fog" args={['#0d1417', 16, 34]} />
+      <SunRig sun={sun} />
       <Suspense fallback={null}>
         <Terrain relief={relief} />
+        <Trees relief={relief} />
       </Suspense>
-      <Rig view={view} />
-      <OrbitControls
-        makeDefault
-        enableDamping
-        enablePan={false}
-        autoRotate={spin}
-        autoRotateSpeed={0.7}
-        minDistance={6}
-        maxDistance={24}
-        minPolarAngle={0.65}
-        maxPolarAngle={1.78}
-      />
+      <Falls />
+      <Ground />
+      <PoiMarkers explore={explore} onVisit={handleVisit} />
+      <Rig view={view} enabled={!explore} />
+      {!explore && (
+        <OrbitControls
+          makeDefault
+          enableDamping
+          enablePan={false}
+          autoRotate={spin}
+          autoRotateSpeed={0.7}
+          minDistance={6}
+          maxDistance={24}
+          minPolarAngle={0.65}
+          maxPolarAngle={1.78}
+        />
+      )}
+      {explore && (
+        <ExploreControls
+          plcRef={plcRef}
+          relief={relief}
+          hike={hike}
+          flyGoal={flyGoal}
+          onLockChange={onLockChange}
+        />
+      )}
       <PostPass pixel={pixel} bayerLog={bayerLog} mode={palette} onFps={onFps} />
     </Canvas>
   );
