@@ -1,9 +1,46 @@
-# YOSEMITE — Half Dome in Bayer Dither
+# YOSEMITE — explorable 3D valley reliefs in Bayer dither
 
-Real Yosemite Half Dome terrain rendered in raw WebGL2 with ordered Bayer dithering, pixelation, and multi-color palettes. Static site, Cloudflare Pages ready.
+Next.js 14 static export + three.js + react-three-fiber + drei, deployed to Cloudflare Pages.
+Four photo-vistas (Tunnel View, Half Dome, Bridalveil Creek, El Capitan), each a
+displaced-relief mesh with pixel + ordered-Bayer-dither post pass.
 
-Data (baked in, no keys): AWS Terrarium DEM tile z13 1374/3167, Esri World Imagery tile z12. Half Dome 37.7459N 119.5932W.
+## Layout (clean boundaries: UI never touches three.js)
 
-Run: npm install, npm run dev (port 3003)
-Build: npm run build (outputs dist/)
-Deploy: wrangler pages deploy dist --project-name=yosemite
+- api.ts — public contract: ValleySceneProps in, events out
+- data/vistas.ts — vista catalog (photo, depth, pois, viewpoints). Add a vista here.
+- lib/depth-table.ts — pure depth sampling + terrain height math (no three, no DOM)
+- scene/ — engine: valley-scene (composition), terrain, dressing (trees/falls/markers),
+  controls (orbit/drag-look/move/tour/scroll rigs), post-shader
+- app/page.tsx — demo website: dock UI only, all 3D state via props
+- scripts/bake-depth.py — depth baker: `python3 bake-depth.py <photo> <depth-out>`
+
+## Reuse API (for the future website)
+
+```tsx
+import ValleyScene from './scene/valley-scene';
+
+<ValleyScene
+  vistaId="tunnel-view" uiMode="orbit"      // orbit | explore | scroll
+  palette={0} pixel={3} bayerLog={3} relief={1}
+  view="valley" spin hike={false} sun="day" tour={false}
+  scrollProgress={null}                      // null = internal chapters; 0-1 = host-driven
+  apiRef={apiRef}                            // { flyToView(id), flyToPoi(id) }
+  onFps={...} onReady={...}
+  onHoverPoi={(h) => ...}                    // { id, label, blurb } | null
+  onHoverTerrain={(h) => ...}                // { elevPct, x, y } | null
+  onChapter={(i, label) => ...}              // scroll chapters
+  onSelectPoi={(id) => ...} onTourEnd={...}
+/>
+```
+
+Modes: orbit (OrbitControls + fly-to viewpoints), explore (drag-look + WASD
+fly/hike with terrain collision + guided tour), scroll (camera chapters from
+page scroll, or host-driven via scrollProgress).
+
+## Run / ship
+
+npm install · npm run dev (3003) · npm run build (out/) ·
+npx wrangler pages deploy out --project-name=yosemite-half-dome --branch=main
+
+Photos: Diliff (CC BY-SA 3.0), GualdimG (CC BY-SA 4.0), Dave Riggs (CC BY-SA 2.0),
+via Wikimedia Commons. Credits in data/vistas.ts and on-page.

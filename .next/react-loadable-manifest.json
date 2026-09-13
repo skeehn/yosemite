@@ -1,7 +1,11 @@
 {
-  "app/page.tsx -> ../components/valley-canvas": {
-    "id": 453,
-    "files": []
+  "app/page.tsx -> ../scene/valley-scene": {
+    "id": 4894,
+    "files": [
+      "static/chunks/b536a0f1.1249f719d932f90b.js",
+      "static/chunks/715.114c3c4150983c8e.js",
+      "static/chunks/894.94d96f0bac08fe81.js"
+    ]
   },
   "node_modules/@react-three/drei/core/VideoTexture.js -> hls.js": {
     "id": null,
