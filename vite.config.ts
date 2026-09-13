@@ -1,8 +1,0 @@
-import { defineConfig } from 'vite'
-export default defineConfig({
-  root: '.',
-  publicDir: 'public',
-  base: './',
-  build: { outDir: 'dist', assetsDir: 'assets', minify: 'esbuild' },
-  server: { port: 3003 }
-})
