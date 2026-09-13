@@ -22,8 +22,10 @@ button.on { background: #e8ece7; color: #0b0e0c; border-color: #e8ece7; font-wei
 .hint { margin-top: 8px; font-size: 10px; opacity: .5; letter-spacing: 1px; }
 #shaderView { position: fixed; z-index: 9; top: 60px; right: 14px; width: min(520px, 90vw); max-height: 70vh; overflow: auto; background: rgba(5,8,6,.94); border: 1px solid #3a443c; padding: 12px; font-size: 10px; line-height: 1.5; color: #b8e0b8; white-space: pre-wrap; }
 .hidden { display: none; }
-#fallback { position: fixed; inset: 0; z-index: 20; background: #0b0e0c; color: #fff; display: flex; flex-direction: column; gap: 12px; align-items: center; justify-content: center; }
-#fallback img { width: 512px; max-width: 90vw; image-rendering: pixelated; }
+#fallback { position: fixed; inset: 0; z-index: 1; background: #0b0e0c; display: flex; flex-direction: column; gap: 12px; align-items: center; justify-content: center; padding: 80px 16px 120px; box-sizing: border-box; }
+#fallbackMsg { font-size: 12px; color: #ffb4a2; letter-spacing: 1px; max-width: 720px; text-align: center; }
+#fbCanvas { width: min(92vw, 900px); image-rendering: pixelated; border: 1px solid #2a322c; }
+.fbsub { font-size: 10px; opacity: .5; letter-spacing: 1px; text-align: center; }
 @media (max-width: 700px) {
   .coords { display: none; }
   .brand { font-size: 15px; }

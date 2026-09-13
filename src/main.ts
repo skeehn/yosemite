@@ -5,6 +5,8 @@ const VERT = `#version 300 es
 layout(location=0) in vec2 a_pos;
 void main(){ gl_Position = vec4(a_pos, 0.0, 1.0); }`;
 
+// NOTE: branchless Bayer — no loops, no dynamic break (some ANGLE/Metal drivers
+// reject loop-break ordered-dither code at compile time).
 const FRAG = `#version 300 es
 precision highp float;
 uniform sampler2D u_height;
@@ -21,20 +23,29 @@ float decodeH(vec2 uv){
   vec3 c = texture(u_height, uv).rgb * 255.0;
   return c.r * 256.0 + c.g + c.b / 256.0 - 32768.0;
 }
-int bayerIndex(ivec2 p, int logSize){
-  int idx = 0;
-  for(int i = 0; i < 4; i++){
-    if(i >= logSize) break;
-    int ix = (p.x >> i) & 1;
-    int iy = (p.y >> i) & 1;
-    idx = (idx << 2) | (iy << 1) | ix;
-  }
-  return idx;
+float bayerIdx2(vec2 p){
+  vec2 q = mod(floor(p), 2.0);
+  float x = step(0.5, q.x);
+  float y = step(0.5, q.y);
+  return (1.0 - x) * (1.0 - y) * 0.0 + (1.0 - x) * y * 3.0 + x * (1.0 - y) * 2.0 + x * y * 1.0;
 }
-float bayer(vec2 frag, int logSize){
-  ivec2 p = ivec2(floor(frag));
-  int levels = 1 << (2 * logSize);
-  return (float(bayerIndex(p, logSize)) + 0.5) / float(levels);
+float bayer4(vec2 p){
+  float c = bayerIdx2(floor(p * 0.5));
+  float f = bayerIdx2(p);
+  return (c * 4.0 + f + 0.5) / 16.0;
+}
+float bayer2(vec2 p){
+  return (bayerIdx2(p) + 0.5) / 4.0;
+}
+float bayer8(vec2 p){
+  float ci = bayer4(floor(p * 0.5)) * 16.0 - 0.5;
+  float fi = bayerIdx2(p);
+  return (ci * 4.0 + fi + 0.5) / 64.0;
+}
+float bayer(vec2 p, int logSize){
+  if(logSize <= 1) return bayer2(p);
+  if(logSize == 2) return bayer4(p);
+  return bayer8(p);
 }
 vec3 pal(float t, int p){
   t = clamp(t, 0.0, 1.0);
@@ -92,10 +103,9 @@ void main(){
   vec3 sun = normalize(vec3(-0.55, 0.65, 0.75));
   float shade = clamp(dot(n, sun) * 0.5 + 0.5, 0.0, 1.0);
   shade = pow(shade, 1.3);
-  vec3 base;
   float ramp;
   if(u_mode == 1){
-    base = texture(u_sat, nuv).rgb;
+    vec3 base = texture(u_sat, nuv).rgb;
     float lum = dot(base, vec3(0.299, 0.587, 0.114));
     ramp = clamp(lum * 0.65 + v * 0.2 + shade * 0.25, 0.0, 1.0);
     float q = ramp * 5.0 + (th - 0.5) * 1.2;
@@ -122,22 +132,114 @@ void main(){
 type State = { pal: number; pixel: number; bayerLog: number; exagg: number; zoom: number; mode: number; drift: boolean; pan: [number, number] };
 
 const state: State = { pal: 0, pixel: 3, bayerLog: 3, exagg: 1.0, zoom: 1.0, mode: 0, drift: true, pan: [0, 0] };
+let webglDead = false;
 
-function compile(gl: WebGL2RenderingContext, type: number, src: string) {
+function compile(gl: WebGL2RenderingContext, type: number, src: string, label: string) {
   const s = gl.createShader(type)!;
   gl.shaderSource(s, src);
   gl.compileShader(s);
-  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s) || 'shader fail');
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+    throw new Error(label + ' compile failed: ' + (gl.getShaderInfoLog(s) || 'no log'));
+  }
   return s;
 }
 
 async function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((res, rej) => {
     const img = new Image();
-    img.crossOrigin = 'anonymous';
     img.onload = () => res(img);
-    img.onerror = () => rej(new Error('img load fail ' + src));
+    img.onerror = () => rej(new Error('image load failed: ' + src));
     img.src = src;
+  });
+}
+
+// ---- Canvas2D static-dither fallback (no WebGL needed) ----
+const PAL_STOPS: number[][][] = [
+  [[8, 41, 33], [51, 84, 56], [115, 112, 92], [158, 153, 140], [245, 242, 230]],
+  [[33, 26, 82], [140, 51, 115], [242, 107, 64], [255, 191, 102], [255, 245, 217]],
+  [[41, 89, 56], [107, 133, 71], [166, 148, 97], [122, 92, 66], [235, 230, 214]],
+  [[13, 23, 15], [48, 97, 48], [138, 171, 82], [217, 235, 158]],
+];
+const BAYER8: number[][] = (() => {
+  let m: number[][] = [[0]];
+  for (let s = 1; s < 8; s *= 2) {
+    const n = s * 2;
+    const nx: number[][] = Array.from({ length: n }, () => new Array(n));
+    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+      const off = [[0, 2], [3, 1]][y >= s ? 1 : 0][x >= s ? 1 : 0];
+      nx[y][x] = m[y % s][x % s] * 4 + off;
+    }
+    m = nx;
+  }
+  return m;
+})();
+
+function palLerp(pal: number, t: number): [number, number, number] {
+  const stops = PAL_STOPS[pal];
+  if (stops.length === 4) {
+    const idx = t < 0.2 ? 0 : t < 0.5 ? 1 : t < 0.85 ? 2 : 3;
+    return stops[idx] as [number, number, number];
+  }
+  const x = Math.min(0.9999, Math.max(0, t)) * 4;
+  const i = Math.floor(x), f = x - i;
+  const a = stops[i], b2 = stops[i + 1];
+  return [a[0] + (b2[0] - a[0]) * f, a[1] + (b2[1] - a[1]) * f, a[2] + (b2[2] - a[2]) * f];
+}
+
+async function renderStaticFallback(): Promise<void> {
+  const img = await loadImage('./tiles/satellite-12-687-1583.jpg');
+  const block = state.pixel;
+  const W = 300, H = Math.round((W * img.naturalHeight) / img.naturalWidth);
+  const off = document.createElement('canvas');
+  off.width = W; off.height = H;
+  const octx = off.getContext('2d', { willReadFrequently: true })!;
+  octx.drawImage(img, 0, 0, W, H);
+  const src = octx.getImageData(0, 0, W, H);
+  const out = octx.createImageData(W, H);
+  const steps = state.pal === 3 ? 4 : 6;
+  for (let y = 0; y < H; y += 1) {
+    for (let x = 0; x < W; x += 1) {
+      const bx = Math.floor(x / block) * block, by = Math.floor(y / block) * block;
+      const i = (by * W + bx) * 4;
+      const lum = (src.data[i] * 0.299 + src.data[i + 1] * 0.587 + src.data[i + 2] * 0.114) / 255;
+      const th = (BAYER8[by & 7][bx & 7] + 0.5) / 64;
+      const q = lum * steps + (th - 0.5) * 1.4;
+      const qi = Math.min(1, Math.max(0, Math.floor(q + 0.5) / steps));
+      const [r, g, b] = palLerp(state.pal, qi);
+      const o = (y * W + x) * 4;
+      out.data[o] = r; out.data[o + 1] = g; out.data[o + 2] = b; out.data[o + 3] = 255;
+    }
+  }
+  const fb = document.getElementById('fbCanvas') as HTMLCanvasElement;
+  fb.width = W; fb.height = H;
+  fb.getContext('2d')!.putImageData(out, 0, 0);
+}
+
+async function bootFallback(reason: string): Promise<void> {
+  webglDead = true;
+  const canvas = document.getElementById('gl') as HTMLCanvasElement;
+  canvas.style.display = 'none';
+  const f = document.getElementById('fallback')!;
+  f.classList.remove('hidden');
+  document.getElementById('fallbackMsg')!.textContent = 'WEBGL OFFLINE — ' + reason;
+  try {
+    await renderStaticFallback();
+  } catch (e) {
+    document.getElementById('fallbackMsg')!.textContent += ' (static render also failed: ' + (e as Error).message + ')';
+  }
+  // keep palette + pixel controls live in fallback mode
+  document.getElementById('palettes')!.addEventListener('click', (e) => {
+    const b = (e.target as HTMLElement).closest('button');
+    if (!b || !webglDead) return;
+    state.pal = Number(b.dataset.pal);
+    document.querySelectorAll('#palettes button').forEach((x) => x.classList.toggle('on', x === b));
+    void renderStaticFallback();
+  });
+  document.getElementById('pixel')!.addEventListener('input', (e) => {
+    if (!webglDead) return;
+    state.pixel = Number((e.target as HTMLInputElement).value);
+    document.getElementById('pixelV')!.textContent = String(state.pixel);
+    void renderStaticFallback();
   });
 }
 
@@ -168,26 +270,34 @@ function tex(gl: WebGL2RenderingContext, img: HTMLImageElement) {
 
 async function main() {
   const canvas = document.getElementById('gl') as HTMLCanvasElement;
-  const gl = canvas.getContext('webgl2', { antialias: false });
-  if (!gl) {
-    document.getElementById('fallback')!.classList.remove('hidden');
-    canvas.style.display = 'none';
+  let gl: WebGL2RenderingContext | null = null;
+  try {
+    gl = canvas.getContext('webgl2', { antialias: false });
+  } catch (e) {
+    await bootFallback('context creation threw: ' + (e as Error).message);
     return;
   }
-  const prog = gl.createProgram()!;
-  gl.attachShader(prog, compile(gl, gl.VERTEX_SHADER, VERT));
-  gl.attachShader(prog, compile(gl, gl.FRAGMENT_SHADER, FRAG));
-  gl.linkProgram(prog);
-  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog) || 'link fail');
-  gl.useProgram(prog);
+  if (!gl) {
+    await bootFallback('this browser returned no WebGL2 context (hardware acceleration off or blocklisted).');
+    return;
+  }
+  const glc: WebGL2RenderingContext = gl;
+  const prog = glc.createProgram()!;
+  glc.attachShader(prog, compile(glc, glc.VERTEX_SHADER, VERT, 'vertex'));
+  glc.attachShader(prog, compile(glc, glc.FRAGMENT_SHADER, FRAG, 'fragment'));
+  glc.linkProgram(prog);
+  if (!glc.getProgramParameter(prog, glc.LINK_STATUS)) {
+    throw new Error('program link failed: ' + (glc.getProgramInfoLog(prog) || 'no log'));
+  }
+  glc.useProgram(prog);
 
-  const buf = gl.createBuffer();
-  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
-  gl.enableVertexAttribArray(0);
-  gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+  const buf = glc.createBuffer();
+  glc.bindBuffer(glc.ARRAY_BUFFER, buf);
+  glc.bufferData(glc.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), glc.STATIC_DRAW);
+  glc.enableVertexAttribArray(0);
+  glc.vertexAttribPointer(0, 2, glc.FLOAT, false, 0, 0);
 
-  const U = (n: string) => gl.getUniformLocation(prog, n);
+  const U = (n: string) => glc.getUniformLocation(prog, n);
   const u = {
     height: U('u_height'), sat: U('u_sat'), res: U('u_res'), time: U('u_time'),
     pixel: U('u_pixel'), exagg: U('u_exagg'), zoom: U('u_zoom'), pan: U('u_pan'),
@@ -200,28 +310,27 @@ async function main() {
     loadImage('./tiles/satellite-12-687-1583.jpg'),
   ]);
   const [hmin, hmax] = heightRange(hImg);
-  const tH = tex(gl, hImg);
-  const tS = tex(gl, sImg);
-  gl.uniform1i(u.height, 0);
-  gl.uniform1i(u.sat, 1);
-  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tH);
-  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, tS);
-  gl.uniform1f(u.hmin, hmin);
-  gl.uniform1f(u.hmax, hmax);
+  const tH = tex(glc, hImg);
+  const tS = tex(glc, sImg);
+  glc.uniform1i(u.height, 0);
+  glc.uniform1i(u.sat, 1);
+  glc.activeTexture(glc.TEXTURE0); glc.bindTexture(glc.TEXTURE_2D, tH);
+  glc.activeTexture(glc.TEXTURE1); glc.bindTexture(glc.TEXTURE_2D, tS);
+  glc.uniform1f(u.hmin, hmin);
+  glc.uniform1f(u.hmax, hmax);
 
   const readout = document.getElementById('readout')!;
-  readout.textContent = `ELEV ${Math.round(hmin)}m – ${Math.round(hmax)}m · TILE z13 HALF DOME`;
+  readout.textContent = `ELEV ${Math.round(hmin)}m – ${Math.round(hmax)}m · TILE z13 HALF DOME · WEBGL2`;
 
   function resize() {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     canvas.width = Math.floor(innerWidth * dpr);
     canvas.height = Math.floor(innerHeight * dpr);
-    gl!.viewport(0, 0, canvas.width, canvas.height);
+    glc.viewport(0, 0, canvas.width, canvas.height);
   }
   resize();
   addEventListener('resize', resize);
 
-  // pan + zoom
   let drag: { x: number; y: number } | null = null;
   canvas.addEventListener('pointerdown', (e) => { drag = { x: e.clientX, y: e.clientY }; canvas.setPointerCapture(e.pointerId); });
   canvas.addEventListener('pointermove', (e) => {
@@ -240,11 +349,10 @@ async function main() {
     document.getElementById('zoomV')!.textContent = state.zoom.toFixed(1) + 'x';
   }, { passive: false });
 
-  // controls
   const bayerNames = ['', '2x2', '4x4', '8x8'];
   document.getElementById('palettes')!.addEventListener('click', (e) => {
     const b = (e.target as HTMLElement).closest('button');
-    if (!b) return;
+    if (!b || webglDead) return;
     state.pal = Number(b.dataset.pal);
     document.querySelectorAll('#palettes button').forEach((x) => x.classList.toggle('on', x === b));
   });
@@ -272,16 +380,16 @@ async function main() {
   function frame(now: number) {
     const t = (now - t0) / 1000;
     if (state.drift && !drag) state.pan[0] = Math.sin(t * 0.06) * 0.08;
-    gl!.uniform2f(u.res, canvas.width, canvas.height);
-    gl!.uniform1f(u.time, t);
-    gl!.uniform1f(u.pixel, state.pixel);
-    gl!.uniform1f(u.exagg, state.exagg);
-    gl!.uniform1f(u.zoom, state.zoom);
-    gl!.uniform2f(u.pan, state.pan[0], state.pan[1]);
-    gl!.uniform1i(u.bayerLog, state.bayerLog);
-    gl!.uniform1i(u.palette, state.pal);
-    gl!.uniform1i(u.mode, state.mode);
-    gl!.drawArrays(gl!.TRIANGLES, 0, 3);
+    glc.uniform2f(u.res, canvas.width, canvas.height);
+    glc.uniform1f(u.time, t);
+    glc.uniform1f(u.pixel, state.pixel);
+    glc.uniform1f(u.exagg, state.exagg);
+    glc.uniform1f(u.zoom, state.zoom);
+    glc.uniform2f(u.pan, state.pan[0], state.pan[1]);
+    glc.uniform1i(u.bayerLog, state.bayerLog);
+    glc.uniform1i(u.palette, state.pal);
+    glc.uniform1i(u.mode, state.mode);
+    glc.drawArrays(glc.TRIANGLES, 0, 3);
     frames++;
     if (now - last > 500) { fps.textContent = Math.round((frames * 1000) / (now - last)) + ' fps'; frames = 0; last = now; }
     requestAnimationFrame(frame);
@@ -291,5 +399,5 @@ async function main() {
 
 main().catch((e) => {
   console.error(e);
-  document.getElementById('fallback')!.classList.remove('hidden');
+  void bootFallback('render failed: ' + (e instanceof Error ? e.message : String(e)));
 });

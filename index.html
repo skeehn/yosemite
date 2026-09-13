@@ -45,7 +45,11 @@
 </footer>
 
 <pre id="shaderView" class="hidden"></pre>
-<div id="fallback" class="hidden">WebGL2 unavailable — showing static satellite. <img src="./tiles/satellite-12-687-1583.jpg" alt="yosemite"></div>
+<div id="fallback" class="hidden">
+  <p id="fallbackMsg"></p>
+  <canvas id="fbCanvas"></canvas>
+  <p class="fbsub">STATIC DITHER FALLBACK — satellite tile via Canvas2D Bayer 8x8. Enable hardware acceleration for full WebGL terrain.</p>
+</div>
 <script type="module" src="./src/main.ts"></script>
 </body>
 </html>
