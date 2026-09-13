@@ -34,10 +34,10 @@ export default function Page() {
   const [vistaId, setVistaId] = useState(params.get('vista') ?? 'tunnel-view');
   const [mode, setMode] = useState<UiMode>('orbit');
   const [pal, setPal] = useState<PaletteMode>(Math.min(5, Math.max(0, num('palette', 0))) as PaletteMode);
-  const [pixel, setPixel] = useState(num('pixel', 2));
+  const [pixel, setPixel] = useState(num('pixel', 4));
   const [bayer, setBayer] = useState(3);
   const [relief, setRelief] = useState(1);
-  const [split, setSplit] = useState(13);
+  const [split, setSplit] = useState(11);
   const [view, setView] = useState('valley');
   const [spin, setSpin] = useState(params.get('spin') !== '0');
   const [sun, setSun] = useState<SunMode>(params.get('sun') === 'sunset' ? 'sunset' : 'day');
