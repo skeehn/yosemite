@@ -24,7 +24,7 @@ button.on { background: #e8ece7; color: #0b0e0c; border-color: #e8ece7; font-wei
 .hidden { display: none; }
 #fallback { position: fixed; inset: 0; z-index: 1; background: #0b0e0c; display: flex; flex-direction: column; gap: 12px; align-items: center; justify-content: center; padding: 80px 16px 120px; box-sizing: border-box; }
 #fallbackMsg { font-size: 12px; color: #ffb4a2; letter-spacing: 1px; max-width: 720px; text-align: center; }
-#fbCanvas { width: min(92vw, 900px); image-rendering: pixelated; border: 1px solid #2a322c; }
+#fbCanvas { max-width: 92vw; max-height: 56vh; width: auto; height: auto; image-rendering: pixelated; border: 1px solid #2a322c; }
 .fbsub { font-size: 10px; opacity: .5; letter-spacing: 1px; text-align: center; }
 @media (max-width: 700px) {
   .coords { display: none; }

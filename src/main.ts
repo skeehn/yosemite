@@ -1,41 +1,33 @@
-// YOSEMITE — real Half Dome terrain + WebGL2 Bayer ordered dither + multi-palette
-// Data: AWS Terrarium DEM tile z13/1374/3167, Esri World Imagery tile z12. No keys.
+// YOSEMITE TUNNEL VIEW — full-bleed photo + WebGL2 Bayer ordered dither.
+// Photo: Diliff, CC BY-SA 3.0, via Wikimedia Commons (baked in public/photo.jpg).
+// Deliberately simple: one image texture, no DEM decode, no pixel readback.
 
 const VERT = `#version 300 es
 layout(location=0) in vec2 a_pos;
 void main(){ gl_Position = vec4(a_pos, 0.0, 1.0); }`;
 
-// NOTE: branchless Bayer — no loops, no dynamic break (some ANGLE/Metal drivers
-// reject loop-break ordered-dither code at compile time).
 const FRAG = `#version 300 es
 precision highp float;
-uniform sampler2D u_height;
-uniform sampler2D u_sat;
+uniform sampler2D u_img;
 uniform vec2  u_res;
-uniform float u_time, u_pixel, u_exagg, u_zoom, u_hmin, u_hmax;
-uniform vec2  u_pan;
-uniform int   u_bayerLog;   // 1=2x2, 2=4x4, 3=8x8
-uniform int   u_palette;    // 0 alpine 1 sunset 2 topo 3 gameboy
-uniform int   u_mode;       // 0 relief 1 satellite
+uniform vec2  u_imgSize;
+uniform vec2  u_mouse;
+uniform float u_time, u_pixel, u_reveal;
+uniform int   u_bayerLog;
+uniform int   u_palette;
 out vec4 o;
 
-float decodeH(vec2 uv){
-  vec3 c = texture(u_height, uv).rgb * 255.0;
-  return c.r * 256.0 + c.g + c.b / 256.0 - 32768.0;
-}
 float bayerIdx2(vec2 p){
   vec2 q = mod(floor(p), 2.0);
   float x = step(0.5, q.x);
   float y = step(0.5, q.y);
-  return (1.0 - x) * (1.0 - y) * 0.0 + (1.0 - x) * y * 3.0 + x * (1.0 - y) * 2.0 + x * y * 1.0;
+  return (1.0 - x) * y * 3.0 + x * (1.0 - y) * 2.0 + x * y * 1.0;
 }
+float bayer2(vec2 p){ return (bayerIdx2(p) + 0.5) / 4.0; }
 float bayer4(vec2 p){
   float c = bayerIdx2(floor(p * 0.5));
   float f = bayerIdx2(p);
   return (c * 4.0 + f + 0.5) / 16.0;
-}
-float bayer2(vec2 p){
-  return (bayerIdx2(p) + 0.5) / 4.0;
 }
 float bayer8(vec2 p){
   float ci = bayer4(floor(p * 0.5)) * 16.0 - 0.5;
@@ -46,6 +38,14 @@ float bayer(vec2 p, int logSize){
   if(logSize <= 1) return bayer2(p);
   if(logSize == 2) return bayer4(p);
   return bayer8(p);
+}
+vec2 coverUv(vec2 frag){
+  float ra = u_res.x / u_res.y;
+  float ri = u_imgSize.x / u_imgSize.y;
+  vec2 uv = frag / u_res;
+  if(ra > ri){ uv.y = (uv.y - 0.5) * ra / ri + 0.5; }
+  else { uv.x = (uv.x - 0.5) * ri / ra + 0.5; }
+  return uv;
 }
 vec3 pal(float t, int p){
   t = clamp(t, 0.0, 1.0);
@@ -81,58 +81,37 @@ vec3 pal(float t, int p){
   if(t<0.75) return mix(c3,c4,(t-0.50)/0.25);
   return mix(c4,c5,(t-0.75)/0.25);
 }
+float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 void main(){
   vec2 frag = gl_FragCoord.xy;
   vec2 pix = floor(frag / u_pixel) * u_pixel + u_pixel * 0.5;
-  vec2 nuv = (pix / u_res - 0.5) / u_zoom + 0.5 + u_pan;
-  if(nuv.x < 0.0 || nuv.x > 1.0 || nuv.y < 0.0 || nuv.y > 1.0){
-    vec2 g = floor(frag / 24.0);
-    float grid = (mod(g.x+g.y, 2.0) < 1.0) ? 0.03 : 0.0;
-    o = vec4(vec3(0.04 + grid), 1.0);
-    return;
-  }
+  vec2 uvFull = coverUv(frag);
+  vec2 uvPix = coverUv(pix);
+  vec3 clean = texture(u_img, clamp(uvFull, 0.001, 0.999)).rgb;
+  float lum = dot(texture(u_img, clamp(uvPix, 0.001, 0.999)).rgb, vec3(0.299, 0.587, 0.114));
   float th = bayer(pix, u_bayerLog);
-  float e = 1.0 / (256.0 * u_zoom);
-  float hC = decodeH(nuv);
-  float hX = decodeH(nuv + vec2(e, 0.0));
-  float hY = decodeH(nuv + vec2(0.0, e));
-  float range = max(u_hmax - u_hmin, 1.0);
-  float v = (hC - u_hmin) / range;
-  v = clamp((v - 0.5) * u_exagg + 0.5, 0.0, 1.0);
-  vec3 n = normalize(vec3(-(hX - hC) / max(e*range*0.5, 0.001), -(hY - hC) / max(e*range*0.5, 0.001), 1.2));
-  vec3 sun = normalize(vec3(-0.55, 0.65, 0.75));
-  float shade = clamp(dot(n, sun) * 0.5 + 0.5, 0.0, 1.0);
-  shade = pow(shade, 1.3);
-  float ramp;
-  if(u_mode == 1){
-    vec3 base = texture(u_sat, nuv).rgb;
-    float lum = dot(base, vec3(0.299, 0.587, 0.114));
-    ramp = clamp(lum * 0.65 + v * 0.2 + shade * 0.25, 0.0, 1.0);
-    float q = ramp * 5.0 + (th - 0.5) * 1.2;
-    float qi = clamp(floor(q + 0.5) / 5.0, 0.0, 1.0);
-    vec3 pc = pal(qi, u_palette);
-    o = vec4(mix(pc, base * 0.55 + pc * 0.45, 0.28), 1.0);
-    return;
-  }
-  ramp = clamp(v * 0.72 + shade * 0.38 - 0.05, 0.0, 1.0);
   float steps = (u_palette == 3) ? 4.0 : 6.0;
-  float q = ramp * steps + (th - 0.5) * 1.4;
+  float q = lum * steps + (th - 0.5) * 1.4;
   float qi = clamp((floor(q) + step(1.0 - fract(q), th)) / steps, 0.0, 1.0);
-  vec3 col = pal(qi, u_palette);
+  vec3 dith = pal(qi, u_palette);
   if(u_palette == 2){
-    float c = abs(fract(v * 22.0) - 0.5);
-    float line = smoothstep(0.06, 0.02, c);
-    col *= (1.0 - line * 0.35);
+    float c = abs(fract(lum * 22.0) - 0.5);
+    dith *= (1.0 - smoothstep(0.06, 0.02, c) * 0.25);
   }
-  float vig = smoothstep(1.25, 0.45, length(nuv - 0.5) * 2.0);
-  col *= mix(0.82, 1.0, vig);
+  float m = min(u_res.x, u_res.y);
+  float d = distance(frag, u_mouse) / m;
+  float r = u_reveal;
+  float inside = (r <= 0.001) ? 0.0 : smoothstep(r, r * 0.55, d);
+  vec3 col = mix(dith, clean * 1.04, inside);
+  float vig = smoothstep(1.3, 0.4, length(frag / u_res - 0.5) * 2.0);
+  col *= mix(0.8, 1.0, vig);
+  col += (hash(frag + fract(u_time)) - 0.5) * 0.035;
   o = vec4(col, 1.0);
 }`;
 
-type State = { pal: number; pixel: number; bayerLog: number; exagg: number; zoom: number; mode: number; drift: boolean; pan: [number, number] };
-
-const state: State = { pal: 0, pixel: 3, bayerLog: 3, exagg: 1.0, zoom: 1.0, mode: 0, drift: true, pan: [0, 0] };
+const state = { pal: 0, pixel: 3, bayerLog: 3, reveal: 0.22, drift: true };
 let webglDead = false;
+let imgW = 1920, imgH = 1253;
 
 function compile(gl: WebGL2RenderingContext, type: number, src: string, label: string) {
   const s = gl.createShader(type)!;
@@ -144,7 +123,7 @@ function compile(gl: WebGL2RenderingContext, type: number, src: string, label: s
   return s;
 }
 
-async function loadImage(src: string): Promise<HTMLImageElement> {
+function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((res, rej) => {
     const img = new Image();
     img.onload = () => res(img);
@@ -153,7 +132,7 @@ async function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
-// ---- Canvas2D static-dither fallback (no WebGL needed) ----
+// ---- Canvas2D static-dither fallback (same photo, cannot fail on GPU) ----
 const PAL_STOPS: number[][][] = [
   [[8, 41, 33], [51, 84, 56], [115, 112, 92], [158, 153, 140], [245, 242, 230]],
   [[33, 26, 82], [140, 51, 115], [242, 107, 64], [255, 191, 102], [255, 245, 217]],
@@ -187,9 +166,9 @@ function palLerp(pal: number, t: number): [number, number, number] {
 }
 
 async function renderStaticFallback(): Promise<void> {
-  const img = await loadImage('./tiles/satellite-12-687-1583.jpg');
+  const img = await loadImage('./photo.jpg');
   const block = state.pixel;
-  const W = 300, H = Math.round((W * img.naturalHeight) / img.naturalWidth);
+  const W = 320, H = Math.round((W * img.naturalHeight) / img.naturalWidth);
   const off = document.createElement('canvas');
   off.width = W; off.height = H;
   const octx = off.getContext('2d', { willReadFrequently: true })!;
@@ -197,8 +176,8 @@ async function renderStaticFallback(): Promise<void> {
   const src = octx.getImageData(0, 0, W, H);
   const out = octx.createImageData(W, H);
   const steps = state.pal === 3 ? 4 : 6;
-  for (let y = 0; y < H; y += 1) {
-    for (let x = 0; x < W; x += 1) {
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
       const bx = Math.floor(x / block) * block, by = Math.floor(y / block) * block;
       const i = (by * W + bx) * 4;
       const lum = (src.data[i] * 0.299 + src.data[i + 1] * 0.587 + src.data[i + 2] * 0.114) / 255;
@@ -217,17 +196,14 @@ async function renderStaticFallback(): Promise<void> {
 
 async function bootFallback(reason: string): Promise<void> {
   webglDead = true;
-  const canvas = document.getElementById('gl') as HTMLCanvasElement;
-  canvas.style.display = 'none';
-  const f = document.getElementById('fallback')!;
-  f.classList.remove('hidden');
+  (document.getElementById('gl') as HTMLCanvasElement).style.display = 'none';
+  document.getElementById('fallback')!.classList.remove('hidden');
   document.getElementById('fallbackMsg')!.textContent = 'WEBGL OFFLINE — ' + reason;
   try {
     await renderStaticFallback();
   } catch (e) {
     document.getElementById('fallbackMsg')!.textContent += ' (static render also failed: ' + (e as Error).message + ')';
   }
-  // keep palette + pixel controls live in fallback mode
   document.getElementById('palettes')!.addEventListener('click', (e) => {
     const b = (e.target as HTMLElement).closest('button');
     if (!b || !webglDead) return;
@@ -243,33 +219,9 @@ async function bootFallback(reason: string): Promise<void> {
   });
 }
 
-function heightRange(img: HTMLImageElement): [number, number] {
-  const c = document.createElement('canvas');
-  c.width = img.naturalWidth; c.height = img.naturalHeight;
-  const ctx = c.getContext('2d', { willReadFrequently: true })!;
-  ctx.drawImage(img, 0, 0);
-  const d = ctx.getImageData(0, 0, c.width, c.height).data;
-  let mn = Infinity, mx = -Infinity;
-  for (let i = 0; i < d.length; i += 4) {
-    const h = d[i] * 256 + d[i + 1] + d[i + 2] / 256 - 32768;
-    if (h < mn) mn = h; if (h > mx) mx = h;
-  }
-  return [mn, mx];
-}
-
-function tex(gl: WebGL2RenderingContext, img: HTMLImageElement) {
-  const t = gl.createTexture()!;
-  gl.bindTexture(gl.TEXTURE_2D, t);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-  return t;
-}
-
 async function main() {
   const canvas = document.getElementById('gl') as HTMLCanvasElement;
+  const mouse: [number, number] = [innerWidth / 2, innerHeight / 2];
   let gl: WebGL2RenderingContext | null = null;
   try {
     gl = canvas.getContext('webgl2', { antialias: false });
@@ -297,30 +249,24 @@ async function main() {
   glc.enableVertexAttribArray(0);
   glc.vertexAttribPointer(0, 2, glc.FLOAT, false, 0, 0);
 
+  const img = await loadImage('./photo.jpg');
+  imgW = img.naturalWidth; imgH = img.naturalHeight;
+  const t = glc.createTexture()!;
+  glc.bindTexture(glc.TEXTURE_2D, t);
+  glc.texImage2D(glc.TEXTURE_2D, 0, glc.RGBA, glc.RGBA, glc.UNSIGNED_BYTE, img);
+  glc.texParameteri(glc.TEXTURE_2D, glc.TEXTURE_WRAP_S, glc.CLAMP_TO_EDGE);
+  glc.texParameteri(glc.TEXTURE_2D, glc.TEXTURE_WRAP_T, glc.CLAMP_TO_EDGE);
+  glc.texParameteri(glc.TEXTURE_2D, glc.TEXTURE_MIN_FILTER, glc.LINEAR);
+  glc.texParameteri(glc.TEXTURE_2D, glc.TEXTURE_MAG_FILTER, glc.LINEAR);
+
   const U = (n: string) => glc.getUniformLocation(prog, n);
   const u = {
-    height: U('u_height'), sat: U('u_sat'), res: U('u_res'), time: U('u_time'),
-    pixel: U('u_pixel'), exagg: U('u_exagg'), zoom: U('u_zoom'), pan: U('u_pan'),
-    bayerLog: U('u_bayerLog'), palette: U('u_palette'), mode: U('u_mode'),
-    hmin: U('u_hmin'), hmax: U('u_hmax'),
+    img: U('u_img'), res: U('u_res'), imgSize: U('u_imgSize'), mouse: U('u_mouse'),
+    time: U('u_time'), pixel: U('u_pixel'), reveal: U('u_reveal'),
+    bayerLog: U('u_bayerLog'), palette: U('u_palette'),
   };
-
-  const [hImg, sImg] = await Promise.all([
-    loadImage('./tiles/terrarium-13-1374-3167.png'),
-    loadImage('./tiles/satellite-12-687-1583.jpg'),
-  ]);
-  const [hmin, hmax] = heightRange(hImg);
-  const tH = tex(glc, hImg);
-  const tS = tex(glc, sImg);
-  glc.uniform1i(u.height, 0);
-  glc.uniform1i(u.sat, 1);
-  glc.activeTexture(glc.TEXTURE0); glc.bindTexture(glc.TEXTURE_2D, tH);
-  glc.activeTexture(glc.TEXTURE1); glc.bindTexture(glc.TEXTURE_2D, tS);
-  glc.uniform1f(u.hmin, hmin);
-  glc.uniform1f(u.hmax, hmax);
-
-  const readout = document.getElementById('readout')!;
-  readout.textContent = `ELEV ${Math.round(hmin)}m – ${Math.round(hmax)}m · TILE z13 HALF DOME · WEBGL2`;
+  glc.uniform1i(u.img, 0);
+  document.getElementById('readout')!.textContent = `TUNNEL VIEW · ${imgW}x${imgH} · WEBGL2 · DILIFF CC BY-SA`;
 
   function resize() {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -330,24 +276,13 @@ async function main() {
   }
   resize();
   addEventListener('resize', resize);
-
-  let drag: { x: number; y: number } | null = null;
-  canvas.addEventListener('pointerdown', (e) => { drag = { x: e.clientX, y: e.clientY }; canvas.setPointerCapture(e.pointerId); });
-  canvas.addEventListener('pointermove', (e) => {
-    if (!drag) return;
-    const dx = (e.clientX - drag.x) / innerHeight / state.zoom;
-    const dy = (e.clientY - drag.y) / innerHeight / state.zoom;
-    state.pan[0] = Math.max(-0.5, Math.min(0.5, state.pan[0] - dx));
-    state.pan[1] = Math.max(-0.5, Math.min(0.5, state.pan[1] + dy));
-    drag = { x: e.clientX, y: e.clientY };
+  let lastMove = -1e9;
+  addEventListener('pointermove', (e) => {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    mouse[0] = e.clientX * dpr;
+    mouse[1] = (innerHeight - e.clientY) * dpr;
+    lastMove = performance.now();
   });
-  canvas.addEventListener('pointerup', () => (drag = null));
-  canvas.addEventListener('wheel', (e) => {
-    e.preventDefault();
-    state.zoom = Math.max(0.5, Math.min(3, state.zoom * (e.deltaY > 0 ? 0.92 : 1.08)));
-    (document.getElementById('zoom') as HTMLInputElement).value = String(Math.round(state.zoom * 100));
-    document.getElementById('zoomV')!.textContent = state.zoom.toFixed(1) + 'x';
-  }, { passive: false });
 
   const bayerNames = ['', '2x2', '4x4', '8x8'];
   document.getElementById('palettes')!.addEventListener('click', (e) => {
@@ -357,15 +292,17 @@ async function main() {
     document.querySelectorAll('#palettes button').forEach((x) => x.classList.toggle('on', x === b));
   });
   const pixel = document.getElementById('pixel') as HTMLInputElement;
-  pixel.addEventListener('input', () => { state.pixel = Number(pixel.value); document.getElementById('pixelV')!.textContent = pixel.value; });
+  const setPixel = (v: number) => {
+    state.pixel = Math.max(1, Math.min(8, Math.round(v)));
+    pixel.value = String(state.pixel);
+    document.getElementById('pixelV')!.textContent = String(state.pixel);
+  };
+  pixel.addEventListener('input', () => setPixel(Number(pixel.value)));
+  addEventListener('wheel', (e) => setPixel(state.pixel + (e.deltaY > 0 ? 1 : -1)), { passive: true });
   const bayer = document.getElementById('bayer') as HTMLInputElement;
   bayer.addEventListener('input', () => { state.bayerLog = Number(bayer.value); document.getElementById('bayerV')!.textContent = bayerNames[state.bayerLog]; });
-  const exagg = document.getElementById('exagg') as HTMLInputElement;
-  exagg.addEventListener('input', () => { state.exagg = Number(exagg.value) / 100; document.getElementById('exaggV')!.textContent = state.exagg.toFixed(1) + 'x'; });
-  const zoom = document.getElementById('zoom') as HTMLInputElement;
-  zoom.addEventListener('input', () => { state.zoom = Number(zoom.value) / 100; document.getElementById('zoomV')!.textContent = state.zoom.toFixed(1) + 'x'; });
-  const modeBtn = document.getElementById('modeBtn')!;
-  modeBtn.addEventListener('click', () => { state.mode = state.mode === 0 ? 1 : 0; modeBtn.textContent = 'MODE: ' + (state.mode === 0 ? 'RELIEF' : 'SAT'); });
+  const reveal = document.getElementById('reveal') as HTMLInputElement;
+  reveal.addEventListener('input', () => { state.reveal = Number(reveal.value) / 100; document.getElementById('revealV')!.textContent = reveal.value; });
   const driftBtn = document.getElementById('driftBtn')!;
   driftBtn.addEventListener('click', () => { state.drift = !state.drift; driftBtn.textContent = 'DRIFT: ' + (state.drift ? 'ON' : 'OFF'); driftBtn.classList.toggle('on', state.drift); });
   const shaderBtn = document.getElementById('shaderBtn')!;
@@ -379,16 +316,18 @@ async function main() {
   let frames = 0, last = performance.now(), t0 = last;
   function frame(now: number) {
     const t = (now - t0) / 1000;
-    if (state.drift && !drag) state.pan[0] = Math.sin(t * 0.06) * 0.08;
+    if (state.drift && now - lastMove > 3000) {
+      mouse[0] = (0.5 + Math.sin(t * 0.21) * 0.28) * canvas.width;
+      mouse[1] = (0.5 + Math.cos(t * 0.13) * 0.22) * canvas.height;
+    }
     glc.uniform2f(u.res, canvas.width, canvas.height);
+    glc.uniform2f(u.imgSize, imgW, imgH);
+    glc.uniform2f(u.mouse, mouse[0], mouse[1]);
     glc.uniform1f(u.time, t);
     glc.uniform1f(u.pixel, state.pixel);
-    glc.uniform1f(u.exagg, state.exagg);
-    glc.uniform1f(u.zoom, state.zoom);
-    glc.uniform2f(u.pan, state.pan[0], state.pan[1]);
+    glc.uniform1f(u.reveal, state.reveal);
     glc.uniform1i(u.bayerLog, state.bayerLog);
     glc.uniform1i(u.palette, state.pal);
-    glc.uniform1i(u.mode, state.mode);
     glc.drawArrays(glc.TRIANGLES, 0, 3);
     frames++;
     if (now - last > 500) { fps.textContent = Math.round((frames * 1000) / (now - last)) + ' fps'; frames = 0; last = now; }
