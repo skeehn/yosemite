@@ -235,7 +235,7 @@ export default function ValleyScene(props: ValleySceneProps) {
       <color attach="background" args={['#0d1417']} />
       <fog attach="fog" args={['#0d1417', 16, 34]} />
       <SunRig sun={sun} />
-      <ParallaxRig enabled={!scrolling}>
+      <ParallaxRig enabled>
         <Suspense fallback={null}>
           <Terrain
             photo={vista.photo}
