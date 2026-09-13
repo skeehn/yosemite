@@ -1,13 +1,21 @@
-"""Bake a landscape-prior depth map from public/photo.jpg -> public/depth.png.
+"""Bake a landscape-prior depth map from a photo.
 White = far, black = near. No ML: vertical prior + sky/haze detection + detail.
-Deterministic; rerun any time the photo changes."""
+Usage: python3 bake-depth.py public/photos/half-dome.jpg public/depths/half-dome.png
+Deterministic; rerun any time a photo changes."""
 from PIL import Image, ImageFilter
 import numpy as np
 import os
+import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-SRC = os.path.join(HERE, '..', 'public', 'photo.jpg')
-DST = os.path.join(HERE, '..', 'public', 'depth.png')
+ROOT = os.path.join(HERE, '..')
+SRC = sys.argv[1] if len(sys.argv) > 2 else None
+DST = sys.argv[2] if len(sys.argv) > 2 else None
+if not SRC or not DST:
+    print('usage: bake-depth.py <src> <dst>')
+    sys.exit(1)
+SRC = os.path.join(ROOT, SRC) if not os.path.isabs(SRC) else SRC
+DST = os.path.join(ROOT, DST) if not os.path.isabs(DST) else DST
 
 img = Image.open(SRC).convert('RGB')
 W = 640
@@ -31,5 +39,6 @@ depth = np.clip(depth, 0, 1)
 
 out = Image.fromarray((depth * 255).astype(np.uint8))
 out = out.filter(ImageFilter.GaussianBlur(7))
+os.makedirs(os.path.dirname(DST), exist_ok=True)
 out.save(DST)
 print('depth saved', DST, out.size)
