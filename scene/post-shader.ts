@@ -1,4 +1,5 @@
-// Dither post-pass shaders shared by ValleyScene. Exported for the SHADER viewer.
+// Dual-density dither post-pass: chunky pixels up close, finer pixels far away,
+// chosen per-fragment from the scene depth texture. Bayer overlay on top.
 export const POST_VERT = `
 varying vec2 vUv;
 void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }
@@ -8,10 +9,14 @@ export const POST_FRAG = `
 precision highp float;
 varying vec2 vUv;
 uniform sampler2D tD;
+uniform sampler2D tDepth;
 uniform vec2 u_res;
+uniform float u_camNear, u_camFar;
+uniform float u_pixelC, u_pixelF, u_split, u_soft;
 uniform int u_bayerLog;
 uniform int u_mode;
 uniform float u_time;
+#include <packing>
 float bayerIdx2(vec2 p){
   vec2 q = mod(floor(p), 2.0);
   float x = step(0.5, q.x);
@@ -69,8 +74,17 @@ vec3 pal(float t, int p){
 }
 float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 void main(){
+  float fragZ = texture2D(tDepth, vUv).x;
+  float dist = -perspectiveDepthToViewZ(fragZ, u_camNear, u_camFar);
+  vec2 resC = u_res / max(u_pixelC, 1.0);
+  vec2 resF = u_res / max(u_pixelF, 1.0);
+  vec2 uvC = (floor(vUv * resC) + 0.5) / resC;
+  vec2 uvF = (floor(vUv * resF) + 0.5) / resF;
+  vec3 cC = texture2D(tD, uvC).rgb;
+  vec3 cF = texture2D(tD, uvF).rgb;
+  float m = smoothstep(u_split - u_soft, u_split + u_soft, dist);
+  vec3 c = mix(cF, cC, m);
   float th = bayer(gl_FragCoord.xy, u_bayerLog);
-  vec3 c = texture2D(tD, vUv).rgb;
   vec3 col;
   bool linear = true;
   if(u_mode == 0){

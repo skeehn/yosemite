@@ -1,6 +1,6 @@
 'use client';
-// ValleyScene: minimal unbreakable core. One relief, dither post, dolly-explore.
-// The camera always stays outside the geometry: no void, no clipping, no locks.
+// ValleyScene: minimal unbreakable core. One relief, dual-density dither post,
+// hover parallax, dolly-explore. Camera always stays outside the geometry.
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, ScrollControls } from '@react-three/drei';
@@ -60,27 +60,74 @@ const _c2 = new THREE.Color();
 const _c3 = new THREE.Color();
 const _v1 = new THREE.Vector3();
 
+function ParallaxRig({ enabled, children }: { enabled: boolean; children: React.ReactNode }) {
+  const ref = useRef<THREE.Group>(null!);
+  const m = useRef({ x: 0, y: 0, tx: 0, ty: 0, down: false });
+  useEffect(() => {
+    if (!enabled) return;
+    const mv = (e: PointerEvent) => {
+      m.current.tx = (e.clientX / window.innerWidth) * 2 - 1;
+      m.current.ty = (e.clientY / window.innerHeight) * 2 - 1;
+    };
+    const dn = () => {
+      m.current.down = true;
+    };
+    const up = () => {
+      m.current.down = false;
+    };
+    window.addEventListener('pointermove', mv);
+    window.addEventListener('pointerdown', dn);
+    window.addEventListener('pointerup', up);
+    return () => {
+      window.removeEventListener('pointermove', mv);
+      window.removeEventListener('pointerdown', dn);
+      window.removeEventListener('pointerup', up);
+    };
+  }, [enabled ]);
+  useFrame((_, rawDt) => {
+    const g = ref.current;
+    if (!g) return;
+    const k = 1 - Math.exp(-2.5 * Math.min(rawDt, 0.05));
+    const gx = m.current.down ? 0 : m.current.tx;
+    const gy = m.current.down ? 0 : m.current.ty;
+    m.current.x += (gx - m.current.x) * k;
+    m.current.y += (gy - m.current.y) * k;
+    g.rotation.y = m.current.x * 0.035;
+    g.rotation.x = m.current.y * 0.02;
+    g.position.x = m.current.x * 0.35;
+  });
+  return <group ref={ref}>{children}</group>;
+}
+
 function PostPass({
   pixel,
+  split,
   bayerLog,
   mode,
   onFps,
 }: {
   pixel: number;
+  split: number;
   bayerLog: number;
   mode: number;
   onFps: (n: number) => void;
 }) {
-  const { gl, scene, camera, size } = useThree();
-  const rt = useMemo(
-    () =>
-      new THREE.WebGLRenderTarget(2, 2, {
-        minFilter: THREE.NearestFilter,
-        magFilter: THREE.NearestFilter,
-        depthBuffer: true,
-      }),
-    []
-  );
+  const { gl, scene, camera, size, viewport } = useThree();
+  const bw = Math.max(8, Math.round((size.width * viewport.dpr) / 2) * 2);
+  const bh = Math.max(8, Math.round((size.height * viewport.dpr) / 2) * 2);
+  const rt = useMemo(() => {
+    const r = new THREE.WebGLRenderTarget(bw, bh, {
+      minFilter: THREE.NearestFilter,
+      magFilter: THREE.NearestFilter,
+      depthBuffer: true,
+    });
+    const dt = new THREE.DepthTexture(bw, bh);
+    dt.minFilter = THREE.NearestFilter;
+    dt.magFilter = THREE.NearestFilter;
+    r.depthTexture = dt;
+    return r;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bw, bh]);
   const post = useMemo(() => {
     const s = new THREE.Scene();
     const cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
@@ -89,7 +136,14 @@ function PostPass({
       fragmentShader: POST_FRAG,
       uniforms: {
         tD: { value: rt.texture },
-        u_res: { value: new THREE.Vector2(2, 2) },
+        tDepth: { value: rt.depthTexture },
+        u_res: { value: new THREE.Vector2(bw, bh) },
+        u_camNear: { value: 0.1 },
+        u_camFar: { value: 200 },
+        u_pixelC: { value: 2 },
+        u_pixelF: { value: 1 },
+        u_split: { value: 13 },
+        u_soft: { value: 2.5 },
         u_bayerLog: { value: 3 },
         u_mode: { value: 0 },
         u_time: { value: 0 },
@@ -104,19 +158,19 @@ function PostPass({
   }, [rt]);
   useEffect(() => () => rt.dispose(), [rt]);
 
-  const pRef = useRef({ pixel, bayerLog, mode });
-  pRef.current = { pixel, bayerLog, mode };
+  const pRef = useRef({ pixel, split, bayerLog, mode });
+  pRef.current = { pixel, split, bayerLog, mode };
   const fpsRef = useRef({ frames: 0, last: performance.now(), t0: performance.now() });
   const cbRef = useRef(onFps);
   cbRef.current = onFps;
 
   useFrame(() => {
     const p = pRef.current;
-    const w = Math.max(2, Math.floor(size.width / p.pixel));
-    const h = Math.max(2, Math.floor(size.height / p.pixel));
-    if (rt.width !== w || rt.height !== h) rt.setSize(w, h);
     const u = post.mat.uniforms;
-    (u.u_res.value as THREE.Vector2).set(w, h);
+    (u.u_res.value as THREE.Vector2).set(bw, bh);
+    u.u_pixelC.value = p.pixel;
+    u.u_pixelF.value = Math.max(1, p.pixel - 1);
+    u.u_split.value = p.split;
     u.u_bayerLog.value = p.bayerLog;
     u.u_mode.value = p.mode;
     u.u_time.value = (performance.now() - fpsRef.current.t0) / 1000;
@@ -138,7 +192,7 @@ function PostPass({
 
 export default function ValleyScene(props: ValleySceneProps) {
   const {
-    vistaId, uiMode, palette, pixel, bayerLog, relief, view, spin, sun,
+    vistaId, uiMode, palette, pixel, bayerLog, relief, view, spin, sun, depthSplit,
     scrollProgress, onFps, onReady, onHoverPoi, onHoverTerrain, onChapter, onSelectPoi,
   } = props;
   const vista = VISTAS.find((v) => v.id === vistaId) ?? VISTAS[0];
@@ -181,32 +235,34 @@ export default function ValleyScene(props: ValleySceneProps) {
       <color attach="background" args={['#0d1417']} />
       <fog attach="fog" args={['#0d1417', 16, 34]} />
       <SunRig sun={sun} />
-      <Suspense fallback={null}>
-        <Terrain
-          photo={vista.photo}
-          depthUrl={vista.depth}
+      <ParallaxRig enabled={!scrolling}>
+        <Suspense fallback={null}>
+          <Terrain
+            photo={vista.photo}
+            depthUrl={vista.depth}
+            relief={relief}
+            planeW={vista.planeW}
+            planeH={planeH}
+            table={table}
+            onHoverTerrain={onHoverTerrain}
+          />
+        </Suspense>
+        <Plinth planeW={vista.planeW} planeH={planeH} />
+        <Ground />
+        <Beacons
+          pois={vista.pois}
+          table={table}
           relief={relief}
           planeW={vista.planeW}
           planeH={planeH}
-          table={table}
-          onHoverTerrain={onHoverTerrain}
+          onVisit={(id) => {
+            const poi = vista.pois.find((p) => p.id === id);
+            if (poi && !scrolling) setPoiGoal({ pos: poi.goal.pos, tgt: poi.goal.tgt });
+            onSelectPoi(id);
+          }}
+          onHover={onHoverPoi}
         />
-      </Suspense>
-      <Plinth planeW={vista.planeW} planeH={planeH} />
-      <Ground />
-      <Beacons
-        pois={vista.pois}
-        table={table}
-        relief={relief}
-        planeW={vista.planeW}
-        planeH={planeH}
-        onVisit={(id) => {
-          const poi = vista.pois.find((p) => p.id === id);
-          if (poi && !scrolling) setPoiGoal({ pos: poi.goal.pos, tgt: poi.goal.tgt });
-          onSelectPoi(id);
-        }}
-        onHover={onHoverPoi}
-      />
+      </ParallaxRig>
       {!scrolling && (
         <OrbitControls
           makeDefault
@@ -231,7 +287,7 @@ export default function ValleyScene(props: ValleySceneProps) {
         ) : (
           <ScrollPathRigExternal progress={scrollProgress} views={viewList} onChapter={onChapter} />
         ))}
-      <PostPass pixel={pixel} bayerLog={bayerLog} mode={palette} onFps={onFps} />
+      <PostPass pixel={pixel} split={depthSplit} bayerLog={bayerLog} mode={palette} onFps={onFps} />
     </Canvas>
   );
 }

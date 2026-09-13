@@ -14,6 +14,8 @@ export type ValleySceneProps = {
   pixel: number;
   bayerLog: number;
   relief: number;
+  /** world-distance crossover between chunky (near) and fine (far) pixels */
+  depthSplit: number;
   /** orbit viewpoint id (from vista.views) */
   view: string;
   spin: boolean;

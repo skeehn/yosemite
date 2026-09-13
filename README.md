@@ -20,22 +20,30 @@ displaced-relief mesh with pixel + ordered-Bayer-dither post pass.
 import ValleyScene from './scene/valley-scene';
 
 <ValleyScene
-  vistaId="tunnel-view" uiMode="orbit"      // orbit | explore | scroll
-  palette={0} pixel={3} bayerLog={3} relief={1}
-  view="valley" spin hike={false} sun="day" tour={false}
+  vistaId="tunnel-view" uiMode="orbit"      // orbit | scroll
+  palette={0} pixel={2} bayerLog={3} relief={1} depthSplit={13}
+  view="valley" spin sun="day"
   scrollProgress={null}                      // null = internal chapters; 0-1 = host-driven
-  apiRef={apiRef}                            // { flyToView(id), flyToPoi(id) }
   onFps={...} onReady={...}
   onHoverPoi={(h) => ...}                    // { id, label, blurb } | null
   onHoverTerrain={(h) => ...}                // { elevPct, x, y } | null
   onChapter={(i, label) => ...}              // scroll chapters
-  onSelectPoi={(id) => ...} onTourEnd={...}
+  onSelectPoi={(id) => ...}
 />
 ```
 
-Modes: orbit (OrbitControls + fly-to viewpoints), explore (drag-look + WASD
-fly/hike with terrain collision + guided tour), scroll (camera chapters from
-page scroll, or host-driven via scrollProgress).
+Modes: orbit/dolly (OrbitControls + fly-to viewpoints + hover parallax),
+scroll (camera chapters from page scroll, or host-driven via scrollProgress).
+Post: dual-density pixels (chunky near, fine far, split by scene depth) +
+Bayer dither + palettes.
+
+## Embed as an animated background
+
+<iframe src="https://yosemite-half-dome.pages.dev/?embed=1&vista=tunnel-view&palette=0&pixel=3&sun=sunset&spin=1"
+  style="width:100%;height:100vh;border:0" title="Yosemite"></iframe>
+
+Params: embed=1 (chrome off) · vista=tunnel-view|half-dome|bridalveil|el-capitan ·
+palette=0-5 · pixel=1-8 · sun=day|sunset · spin=0|1.
 
 ## Run / ship
 
