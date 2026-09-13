@@ -255,6 +255,7 @@ async function main() {
   imgW = img.naturalWidth; imgH = img.naturalHeight;
   const t = glc.createTexture()!;
   glc.bindTexture(glc.TEXTURE_2D, t);
+  glc.pixelStorei(glc.UNPACK_FLIP_Y_WEBGL, true);
   glc.texImage2D(glc.TEXTURE_2D, 0, glc.RGBA, glc.RGBA, glc.UNSIGNED_BYTE, img);
   glc.texParameteri(glc.TEXTURE_2D, glc.TEXTURE_WRAP_S, glc.CLAMP_TO_EDGE);
   glc.texParameteri(glc.TEXTURE_2D, glc.TEXTURE_WRAP_T, glc.CLAMP_TO_EDGE);
