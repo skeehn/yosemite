@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>YOSEMITE — Half Dome in Bayer Dither</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <script type="module" crossorigin src="./assets/index-BydeJ-7N.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-53XEz3pS.css">
+</head>
+<body>
+<canvas id="gl"></canvas>
+
+<header class="hud top">
+  <div class="brand">YOSEMITE<span>/HALF-DOME</span></div>
+  <div class="coords">37.7459N 119.5932W — REAL TERRAIN TILE z13 · TERRARIUM DEM + ESRI SAT</div>
+</header>
+
+<aside class="hud legend">
+  <div id="readout">ELEV — · SHADE —</div>
+  <div id="fps">— fps</div>
+</aside>
+
+<footer class="hud panel">
+  <div class="row">
+    <div class="group" id="palettes">
+      <button data-pal="0" class="on">ALPINE</button>
+      <button data-pal="1">SUNSET</button>
+      <button data-pal="2">TOPO</button>
+      <button data-pal="3">GAMEBOY</button>
+    </div>
+    <div class="group">
+      <button id="modeBtn">MODE: RELIEF</button>
+      <button id="driftBtn" class="on">DRIFT: ON</button>
+      <button id="shaderBtn">SHADER</button>
+    </div>
+  </div>
+  <div class="row sliders">
+    <label>PIXEL <input id="pixel" type="range" min="1" max="8" step="1" value="3"><b id="pixelV">3</b></label>
+    <label>BAYER <input id="bayer" type="range" min="1" max="3" step="1" value="3"><b id="bayerV">8x8</b></label>
+    <label>ELEV <input id="exagg" type="range" min="20" max="200" step="1" value="100"><b id="exaggV">1.0x</b></label>
+    <label>ZOOM <input id="zoom" type="range" min="50" max="300" step="1" value="100"><b id="zoomV">1.0x</b></label>
+  </div>
+  <div class="hint">drag to pan · wheel to zoom · data: AWS Terrarium DEM, Esri World Imagery</div>
+</footer>
+
+<pre id="shaderView" class="hidden"></pre>
+<div id="fallback" class="hidden">WebGL2 unavailable — showing static satellite. <img src="./tiles/satellite-12-687-1583.jpg" alt="yosemite"></div>
+</body>
+</html>
