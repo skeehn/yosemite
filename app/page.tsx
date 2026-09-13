@@ -1,6 +1,6 @@
 'use client';
 import dynamic from 'next/dynamic';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { PaletteMode } from '../components/valley-canvas';
 import { POST_SHADER_SOURCE } from '../components/valley-canvas';
 
@@ -31,8 +31,23 @@ export default function Page() {
   const [fps, setFps] = useState('— fps');
   const [ready, setReady] = useState(false);
   const [showShader, setShowShader] = useState(false);
+  const [uiHidden, setUiHidden] = useState(false);
   const onFps = useCallback((n: number) => setFps(n + ' fps'), []);
   const onReady = useCallback(() => setReady(true), []);
+  useEffect(() => {
+    document.body.classList.toggle('chrome-hidden', uiHidden);
+    if (!uiHidden) return;
+    const show = () => setUiHidden(false);
+    window.addEventListener('pointermove', show, { once: true });
+    return () => window.removeEventListener('pointermove', show);
+  }, [uiHidden]);
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => {
+      if (e.key === 'h' || e.key === 'H') setUiHidden((v) => !v);
+    };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, []);
 
   return (
     <>
@@ -56,7 +71,7 @@ export default function Page() {
       </header>
 
       <aside className="hud legend">
-        <div>TUNNEL VIEW · DISPLACED RELIEF · 44K TRIS</div>
+        <div>TUNNEL VIEW · DISPLACED RELIEF · 102K TRIS</div>
         <div>{fps}</div>
       </aside>
 
@@ -79,6 +94,7 @@ export default function Page() {
               SPIN: {spin ? 'ON' : 'OFF'}
             </button>
             <button onClick={() => setShowShader(!showShader)}>SHADER</button>
+            <button onClick={() => setUiHidden(true)}>HIDE UI</button>
           </div>
         </div>
         <div className="row sliders">
@@ -86,7 +102,7 @@ export default function Page() {
           <label>BAYER <input type="range" min={1} max={3} step={1} value={bayer} onChange={(e) => setBayer(Number(e.target.value))} /><b>{BAYER_NAMES[bayer]}</b></label>
           <label>RELIEF <input type="range" min={20} max={200} step={1} value={Math.round(relief * 100)} onChange={(e) => setRelief(Number(e.target.value) / 100)} /><b>{relief.toFixed(1)}x</b></label>
         </div>
-        <div className="hint">drag to orbit · wheel to zoom · depth baked from photo · photo: Diliff CC BY-SA 3.0</div>
+        <div className="hint">drag to orbit · wheel to zoom · H hides interface · depth baked from photo · photo: Diliff CC BY-SA 3.0</div>
       </footer>
 
       {showShader && <pre id="shaderView">{POST_SHADER_SOURCE}</pre>}

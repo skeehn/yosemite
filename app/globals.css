@@ -2,7 +2,8 @@ html, body { margin: 0; padding: 0; height: 100%; background: #0b0e0c; overflow:
 body { font-family: 'Space Mono', ui-monospace, monospace; color: #e8ece7; }
 #stage { position: fixed; inset: 0; }
 #stage canvas { display: block; }
-.hud { position: fixed; z-index: 5; }
+.hud { position: fixed; z-index: 5; transition: opacity 0.5s; }
+body.chrome-hidden .hud { opacity: 0; pointer-events: none; }
 .top { top: 0; left: 0; right: 0; display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; pointer-events: none; mix-blend-mode: difference; }
 .brand { font-weight: 700; font-size: 20px; letter-spacing: 2px; }
 .brand span { opacity: .6; font-weight: 400; }

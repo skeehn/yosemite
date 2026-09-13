@@ -110,7 +110,7 @@ function Terrain({ relief }: { relief: number }) {
   }, [map]);
   return (
     <mesh>
-      <planeGeometry args={[16, 10.45, 260, 170]} />
+      <planeGeometry args={[19, 12.4, 280, 182]} />
       <meshStandardMaterial
         map={map}
         displacementMap={disp}
@@ -126,10 +126,10 @@ function Terrain({ relief }: { relief: number }) {
 }
 
 const GOALS: Record<string, { pos: [number, number, number]; tgt: [number, number, number] }> = {
-  valley: { pos: [0, 1.2, 13.5], tgt: [0, 0.3, 0] },
-  elcap: { pos: [-6.5, 1.8, 9], tgt: [-4, 1, 0] },
-  falls: { pos: [5.5, 1.4, 9.5], tgt: [3.5, 0.8, 0] },
-  dome: { pos: [1.5, 2.4, 10], tgt: [0.5, 1.2, -1] },
+  valley: { pos: [0, 1.1, 12], tgt: [0, 0.3, 0] },
+  elcap: { pos: [-6.5, 1.7, 8.5], tgt: [-4, 1, 0] },
+  falls: { pos: [5.5, 1.3, 9], tgt: [3.5, 0.8, 0] },
+  dome: { pos: [1.5, 2.2, 9.5], tgt: [0.5, 1.2, -1] },
 };
 
 function Rig({ view }: { view: string }) {
@@ -250,12 +250,14 @@ export default function ValleyCanvas({
     <Canvas
       flat
       dpr={[1, 1.75]}
-      camera={{ fov: 42, position: [0, 1.2, 13.5], near: 0.1, far: 100 }}
+      camera={{ fov: 42, position: [0, 1.1, 12], near: 0.1, far: 100 }}
       gl={{ antialias: false, powerPreference: 'high-performance' }}
       onCreated={onReady}
     >
-      <ambientLight intensity={0.85} />
-      <directionalLight position={[-5, 7, 6]} intensity={2.2} />
+      <color attach="background" args={['#0a0f14']} />
+      <fog attach="fog" args={['#0a0f14', 16, 34]} />
+      <ambientLight intensity={1.0} />
+      <directionalLight position={[-5, 7, 6]} intensity={1.4} />
       <Suspense fallback={null}>
         <Terrain relief={relief} />
       </Suspense>
