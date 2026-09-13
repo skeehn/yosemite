@@ -197,7 +197,9 @@ async function renderStaticFallback(): Promise<void> {
 async function bootFallback(reason: string): Promise<void> {
   webglDead = true;
   (document.getElementById('gl') as HTMLCanvasElement).style.display = 'none';
-  document.getElementById('fallback')!.classList.remove('hidden');
+  const fb = document.getElementById('fallback')!;
+  fb.classList.remove('hidden');
+  fb.style.display = 'flex';
   document.getElementById('fallbackMsg')!.textContent = 'WEBGL OFFLINE — ' + reason;
   try {
     await renderStaticFallback();
