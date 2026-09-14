@@ -3,6 +3,7 @@ import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useState } from 'react';
 import { VISTAS } from '../data/vistas';
 import type { PaletteMode, SunMode } from '../api';
+import { BUILD_ID } from '@/lib/build-id';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -260,6 +261,7 @@ export default function Page() {
           <span>VALLEY · SHOT ON LOCATION IN YOSEMITE</span>
           <a href="https://github.com/skeehn/yosemite">GITHUB</a>
           <span>PHOTOS CC BY-SA · DILIFF · DAVE RIGGS · GUALDIMG</span>
+          <span>BUILD {BUILD_ID}</span>
         </footer>
       </main>
     </>
