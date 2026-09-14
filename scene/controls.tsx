@@ -55,6 +55,8 @@ function PathFollower({
     let f = t - i;
     f = f * f * (3 - 2 * f);
     camera.position.lerpVectors(pos[i], pos[i + 1], f);
+    camera.position.x += Math.sin(progress * Math.PI * 2) * 1.2;
+    camera.position.y += Math.sin(progress * Math.PI * 3) * 0.4;
     _t.lerpVectors(tgt[i], tgt[i + 1], f);
     camera.lookAt(_t);
     const ci = Math.round(clamp(progress, 0, 1) * (n - 1));

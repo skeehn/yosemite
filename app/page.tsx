@@ -80,9 +80,9 @@ export default function Page() {
           vistaId={VISTAS[vistaIdx]?.id ?? 'tunnel-view'}
           uiMode="scroll"
           palette={pal}
-          pixel={4}
+          pixel={3}
           bayerLog={3}
-          relief={1.15}
+          relief={1.3}
           depthSplit={11}
           view={(VISTAS[vistaIdx] ?? VISTAS[0]).defaultView}
           spin={false}
@@ -98,7 +98,7 @@ export default function Page() {
       </div>
       <div id="veil" className={ready ? 'hidden' : ''}>VALLEY</div>
 
-      <button id="sunbtn" onClick={() => setSun(sun === 'day' ? 'sunset' : 'day')}>
+      <button id="sunbtn" className="hidden" onClick={() => setSun(sun === 'day' ? 'sunset' : 'day')}>
         {sun === 'day' ? 'DAY' : 'SUNSET'}
       </button>
 
@@ -112,7 +112,10 @@ export default function Page() {
             <a href="#pricing">PRICING</a>
             <a href="#faq">FAQ</a>
           </div>
-          <a href="#embed"><Button size="sm">GET THE SNIPPET</Button></a>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button className="ghost" onClick={() => setSun(sun === 'day' ? 'sunset' : 'day')}>{sun === 'day' ? 'DAY' : 'SUNSET'}</button>
+            <a href="#embed"><Button size="sm">GET THE SNIPPET</Button></a>
+          </div>
         </nav>
 
         <section className="hero">

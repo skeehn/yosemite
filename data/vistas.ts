@@ -63,7 +63,7 @@ export const VISTAS: Vista[] = [
       },
     ],
     views: {
-      valley: { label: 'VALLEY', pos: [0, 1.1, 12], tgt: [0, 0.3, 0] },
+      valley: { label: 'VALLEY', pos: [2.2, 1.4, 11.5], tgt: [0, 0.3, 0] },
       elcap: { label: 'EL CAP', pos: [-6.5, 1.7, 8.5], tgt: [-4, 1, 0] },
       falls: { label: 'FALLS', pos: [5.5, 1.3, 9], tgt: [3.5, 0.8, 0] },
       dome: { label: 'DOME', pos: [1.5, 2.2, 9.5], tgt: [0.5, 1.2, -1] },

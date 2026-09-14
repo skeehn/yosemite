@@ -2,7 +2,7 @@
 // ValleyScene: minimal unbreakable core. One relief, dual-density dither post,
 // hover parallax, dolly-explore. Camera always stays outside the geometry.
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import { Canvas, useFrame, useThree, useLoader } from '@react-three/fiber';
 import { OrbitControls, ScrollControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { VISTAS } from '../data/vistas';
@@ -211,6 +211,13 @@ export default function ValleyScene(props: ValleySceneProps) {
     setViewState(view);
     setPoiGoal(null);
   }, [view, vistaId]);
+  useEffect(() => {
+    for (const v of VISTAS) {
+      useLoader.preload(THREE.TextureLoader, v.photo);
+      useLoader.preload(THREE.TextureLoader, v.depth);
+      void loadDepthTable(v.depth);
+    }
+  }, []);
   useEffect(() => {
     let on = true;
     setTable(null);
