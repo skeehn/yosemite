@@ -81,7 +81,7 @@ export default function Page() {
           palette={pal}
           pixel={4}
           bayerLog={3}
-          relief={1.25}
+          relief={1.15}
           depthSplit={11}
           view={(VISTAS[vistaIdx] ?? VISTAS[0]).defaultView}
           spin={false}
@@ -115,11 +115,7 @@ export default function Page() {
         </nav>
 
         <section className="hero">
-          <div className="flex gap-2">
-            <Badge>LIVE RENDER</Badge>
-            <Badge variant="outline">BAYER 8×8</Badge>
-          </div>
-          <div className="kicker" style={{ marginTop: 18 }}>VALLEY · AI-DESIGNED LIVING BACKDROPS</div>
+          <div className="kicker">VALLEY · AI-DESIGNED LIVING BACKDROPS</div>
           <h1>Your site,<br /><em>shot on location.</em></h1>
           <p className="sub">
             Valley renders living 3D landscapes in ordered Bayer dither — tuned by AI,
