@@ -6,14 +6,19 @@ import type { PaletteMode, SunMode } from '../api';
 
 const ValleyScene = dynamic(() => import('../scene/valley-scene'), { ssr: false });
 
-const PALS: { id: PaletteMode; label: string; sw: string }[] = [
-  { id: 0, label: 'FULL', sw: 'linear-gradient(135deg,#7fa8c9,#3d5a3a 55%,#c9bfa5)' },
-  { id: 1, label: 'ALPINE', sw: 'linear-gradient(135deg,#14291f,#73705c 60%,#f5f2e6)' },
-  { id: 2, label: 'SUNSET', sw: 'linear-gradient(135deg,#211a52,#f26b40 60%,#fff5d9)' },
-  { id: 3, label: 'TOPO', sw: 'linear-gradient(135deg,#295937,#a89461 60%,#ebe6d6)' },
-  { id: 4, label: 'GAMEBOY', sw: 'linear-gradient(135deg,#0d1710,#619154 60%,#d9eb9e)' },
-  { id: 5, label: '1-BIT', sw: 'linear-gradient(135deg,#11100e 50%,#efe9dc 50%)' },
+const PALS: { id: PaletteMode; label: string; sw: string; desc: string }[] = [
+  { id: 0, label: 'FULL', sw: 'linear-gradient(135deg,#7fa8c9,#3d5a3a 55%,#c9bfa5)', desc: 'True color, dithered clean. The default.' },
+  { id: 1, label: 'ALPINE', sw: 'linear-gradient(135deg,#14291f,#73705c 60%,#f5f2e6)', desc: 'Forest-floor neutrals. Quiet and premium.' },
+  { id: 2, label: 'SUNSET', sw: 'linear-gradient(135deg,#211a52,#f26b40 60%,#fff5d9)', desc: 'Golden-hour gradient, always on.' },
+  { id: 3, label: 'TOPO', sw: 'linear-gradient(135deg,#295937,#a89461 60%,#ebe6d6)', desc: 'Survey greens with contour bands.' },
+  { id: 4, label: 'GAMEBOY', sw: 'linear-gradient(135deg,#0d1710,#619154 60%,#d9eb9e)', desc: 'Four greens. 1989 called.' },
+  { id: 5, label: '1-BIT', sw: 'linear-gradient(135deg,#11100e 50%,#efe9dc 50%)', desc: 'Ink on paper. Obra-Dinn mode.' },
 ];
+
+const SNIPPET = `<iframe
+  src="https://yosemite-half-dome.pages.dev/?embed=1&vista=tunnel-view&palette=0&pixel=4&sun=sunset"
+  style="width:100%;height:100vh;border:0"
+  title="Valley living backdrop"></iframe>`;
 
 export default function Page() {
   const [vistaIdx, setVistaIdx] = useState(0);
@@ -21,7 +26,7 @@ export default function Page() {
   const [sun, setSun] = useState<SunMode>('day');
   const [pal, setPal] = useState<PaletteMode>(0);
   const [ready, setReady] = useState(false);
-  const vista = VISTAS[vistaIdx] ?? VISTAS[0];
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     let raf = 0;
@@ -43,21 +48,30 @@ export default function Page() {
     };
   }, []);
 
-  const noop = useCallback(() => {}, []);
   const onReady = useCallback(() => setReady(true), []);
+  const noop = useCallback(() => {}, []);
+  const copySnippet = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(SNIPPET);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    } catch {
+      setCopied(false);
+    }
+  }, []);
 
   return (
     <>
       <div id="stage">
         <ValleyScene
-          vistaId={vista.id}
+          vistaId={VISTAS[vistaIdx]?.id ?? 'tunnel-view'}
           uiMode="scroll"
           palette={pal}
           pixel={4}
           bayerLog={3}
           relief={1}
           depthSplit={11}
-          view={vista.defaultView}
+          view={(VISTAS[vistaIdx] ?? VISTAS[0]).defaultView}
           spin={false}
           sun={sun}
           scrollProgress={local}
@@ -69,40 +83,139 @@ export default function Page() {
           onSelectPoi={noop}
         />
       </div>
-      <div id="veil" className={ready ? 'hidden' : ''}>YOSEMITE</div>
+      <div id="veil" className={ready ? 'hidden' : ''}>VALLEY</div>
 
       <button id="sunbtn" onClick={() => setSun(sun === 'day' ? 'sunset' : 'day')}>
         {sun === 'day' ? 'DAY' : 'SUNSET'}
       </button>
 
       <main className="site">
+        <nav className="nav">
+          <div className="wordmark">VALLEY</div>
+          <div className="nav-links">
+            <a href="#styles">STYLES</a>
+            <a href="#vistas">VISTAS</a>
+            <a href="#embed">EMBED</a>
+            <a href="#pricing">PRICING</a>
+          </div>
+          <a href="#embed"><button className="cta">GET THE SNIPPET</button></a>
+        </nav>
+
         <section className="hero">
-          <div className="kicker">YOSEMITE · A DITHERED VALLEY</div>
-          <h1>Stone<br />Light<br />Pixels</h1>
+          <div className="kicker">VALLEY · AI-DESIGNED LIVING BACKDROPS</div>
+          <h1>Your site,<br /><em>shot on location.</em></h1>
+          <p className="sub">
+            Valley renders living 3D landscapes in ordered Bayer dither — tuned by AI,
+            embedded in one snippet, running at 60 fps on any static host.
+            This page is the demo. The mountains behind this text are real geometry.
+          </p>
+          <div className="hero-cta">
+            <a href="#embed"><button className="cta">GET THE SNIPPET</button></a>
+            <a href="#styles"><button className="ghost">BROWSE STYLES</button></a>
+          </div>
+          <div className="stats">
+            <div><b>60</b><span>FPS LIVE</span></div>
+            <div><b>4</b><span>VISTAS</span></div>
+            <div><b>6</b><span>STYLES</span></div>
+            <div><b>1</b><span>SNIPPET</span></div>
+          </div>
           <div className="cue">SCROLL TO TRAVEL<span /></div>
         </section>
 
-        {VISTAS.map((v, i) => (
-          <section key={v.id} className={'vsec' + (i % 2 ? ' right' : '')}>
-            <div className="card">
-              <div className="num">0{i + 1}</div>
-              <div className="name">{v.label}</div>
-              <div className="sub">{v.sub}</div>
-              <p>{v.blurb}</p>
-              <div className="credit">PHOTO {v.credit}</div>
-            </div>
-          </section>
-        ))}
+        <div className="strip">
+          <span>ORDERED BAYER 8×8</span>
+          <span>DUAL-DENSITY PIXELS</span>
+          <span>STATIC-HOST READY</span>
+          <span>HOVER + SCROLL PARALLAX</span>
+        </div>
 
-        <footer className="foot">
-          <div className="dots">
+        <section className="styles" id="styles">
+          <div className="sec-label">01 — STYLES</div>
+          <h2>Six moods, <em>one valley.</em></h2>
+          <p className="lede">Every style re-grades the same live relief. Click one — the background behind this page changes instantly. That is the whole product.</p>
+          <div className="grid">
             {PALS.map((p) => (
-              <button key={p.id} title={p.label} className={'dot' + (pal === p.id ? ' on' : '')} onClick={() => setPal(p.id)}>
-                <span style={{ background: p.sw }} />
+              <button key={p.id} className={'scard' + (pal === p.id ? ' on' : '')} onClick={() => setPal(p.id)}>
+                <div className="swatch" style={{ background: p.sw }} />
+                <b>{p.label}</b>
+                <p>{p.desc}</p>
               </button>
             ))}
           </div>
-          <div className="hint">RENDERED LIVE · BAYER ORDERED DITHER · MOVE YOUR CURSOR, IT LEANS BACK</div>
+        </section>
+
+        <div id="vistas">
+          {VISTAS.map((v, i) => (
+            <section key={v.id} className={'vsec' + (i % 2 ? ' right' : '')}>
+              <div className="card">
+                <div className="num">0{i + 1} — LOCATION</div>
+                <div className="name">{v.label}</div>
+                <div className="sub">{v.sub}</div>
+                <p>{v.blurb} The camera already knows the way here — you just scrolled through it.</p>
+                <div className="credit">PHOTO {v.credit}</div>
+              </div>
+            </section>
+          ))}
+        </div>
+
+        <section className="embed" id="embed">
+          <div className="sec-label">02 — EMBED</div>
+          <h2>Drop it <em>in.</em></h2>
+          <p className="lede">One iframe. No keys, no build step, no server. The valley runs itself — drift, sway, and light included.</p>
+          <pre className="snippet">{SNIPPET}</pre>
+          <div className="params">
+            <span>vista=tunnel-view|half-dome|bridalveil|el-capitan</span>
+            <span>palette=0-5</span>
+            <span>pixel=1-8</span>
+            <span>sun=day|sunset</span>
+            <span>spin=0|1</span>
+          </div>
+          <button className="cta copybtn" onClick={copySnippet}>{copied ? 'COPIED' : 'COPY SNIPPET'}</button>
+        </section>
+
+        <section className="pricing" id="pricing">
+          <div className="sec-label">03 — PRICING</div>
+          <h2>Start free.</h2>
+          <div className="tiers">
+            <div className="tier">
+              <b>HOBBY</b>
+              <div className="price">$0</div>
+              <ul>
+                <li>1 live site</li>
+                <li>All 6 styles</li>
+                <li>Community locations</li>
+              </ul>
+            </div>
+            <div className="tier hot">
+              <b>STUDIO</b>
+              <div className="price">$19<span>/mo</span></div>
+              <ul>
+                <li>Unlimited sites</li>
+                <li>Day/sunset cycling</li>
+                <li>Custom locations</li>
+              </ul>
+            </div>
+            <div className="tier">
+              <b>SCALE</b>
+              <div className="price">Custom</div>
+              <ul>
+                <li>SLA + support</li>
+                <li>Private vistas</li>
+                <li>SSO + audit</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        <section className="closer">
+          <h2>Put a valley behind <em>your launch.</em></h2>
+          <a href="#embed"><button className="cta">GET THE SNIPPET</button></a>
+        </section>
+
+        <footer className="foot">
+          <span>VALLEY · SHOT ON LOCATION IN YOSEMITE</span>
+          <a href="https://github.com/skeehn/yosemite">GITHUB</a>
+          <span>PHOTOS CC BY-SA · DILIFF · DAVE RIGGS · GUALDIMG</span>
         </footer>
       </main>
     </>
