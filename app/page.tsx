@@ -3,6 +3,10 @@ import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useState } from 'react';
 import { VISTAS } from '../data/vistas';
 import type { PaletteMode, SunMode } from '../api';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 
 const ValleyScene = dynamic(() => import('../scene/valley-scene'), { ssr: false });
 
@@ -13,6 +17,14 @@ const PALS: { id: PaletteMode; label: string; sw: string; desc: string }[] = [
   { id: 3, label: 'TOPO', sw: 'linear-gradient(135deg,#295937,#a89461 60%,#ebe6d6)', desc: 'Survey greens with contour bands.' },
   { id: 4, label: 'GAMEBOY', sw: 'linear-gradient(135deg,#0d1710,#619154 60%,#d9eb9e)', desc: 'Four greens. 1989 called.' },
   { id: 5, label: '1-BIT', sw: 'linear-gradient(135deg,#11100e 50%,#efe9dc 50%)', desc: 'Ink on paper. Obra-Dinn mode.' },
+];
+
+const FAQS = [
+  { q: 'What is Valley?', a: 'An AI-designed backdrop engine. It renders living 3D landscapes — this one is Yosemite — in ordered Bayer dither, tuned per brand, embedded anywhere with one snippet.' },
+  { q: 'How do I put it on my site?', a: 'Copy the iframe from the Embed section. No keys, no build step, no server. Params control vista, style, pixel size, and light.' },
+  { q: 'What does it cost to run?', a: 'Almost nothing. One displaced relief plus one fullscreen dither pass holds 60 fps on integrated graphics, and the whole thing ships as static files.' },
+  { q: 'Can it show my own location?', a: 'Yes. Any photo becomes a vista: we bake a depth map, the relief follows, the dither does the rest. Studio plans include custom locations.' },
+  { q: 'Who owns the imagery?', a: 'The Yosemite photography is Creative Commons (Diliff, Dave Riggs, GualdimG via Wikimedia). Credited on-page and in the repo.' },
 ];
 
 const SNIPPET = `<iframe
@@ -69,7 +81,7 @@ export default function Page() {
           palette={pal}
           pixel={4}
           bayerLog={3}
-          relief={1}
+          relief={1.25}
           depthSplit={11}
           view={(VISTAS[vistaIdx] ?? VISTAS[0]).defaultView}
           spin={false}
@@ -97,12 +109,17 @@ export default function Page() {
             <a href="#vistas">VISTAS</a>
             <a href="#embed">EMBED</a>
             <a href="#pricing">PRICING</a>
+            <a href="#faq">FAQ</a>
           </div>
-          <a href="#embed"><button className="cta">GET THE SNIPPET</button></a>
+          <a href="#embed"><Button size="sm">GET THE SNIPPET</Button></a>
         </nav>
 
         <section className="hero">
-          <div className="kicker">VALLEY · AI-DESIGNED LIVING BACKDROPS</div>
+          <div className="flex gap-2">
+            <Badge>LIVE RENDER</Badge>
+            <Badge variant="outline">BAYER 8×8</Badge>
+          </div>
+          <div className="kicker" style={{ marginTop: 18 }}>VALLEY · AI-DESIGNED LIVING BACKDROPS</div>
           <h1>Your site,<br /><em>shot on location.</em></h1>
           <p className="sub">
             Valley renders living 3D landscapes in ordered Bayer dither — tuned by AI,
@@ -110,8 +127,8 @@ export default function Page() {
             This page is the demo. The mountains behind this text are real geometry.
           </p>
           <div className="hero-cta">
-            <a href="#embed"><button className="cta">GET THE SNIPPET</button></a>
-            <a href="#styles"><button className="ghost">BROWSE STYLES</button></a>
+            <a href="#embed"><Button>GET THE SNIPPET</Button></a>
+            <a href="#styles"><Button variant="outline">BROWSE STYLES</Button></a>
           </div>
           <div className="stats">
             <div><b>60</b><span>FPS LIVE</span></div>
@@ -135,11 +152,13 @@ export default function Page() {
           <p className="lede">Every style re-grades the same live relief. Click one — the background behind this page changes instantly. That is the whole product.</p>
           <div className="grid">
             {PALS.map((p) => (
-              <button key={p.id} className={'scard' + (pal === p.id ? ' on' : '')} onClick={() => setPal(p.id)}>
-                <div className="swatch" style={{ background: p.sw }} />
-                <b>{p.label}</b>
-                <p>{p.desc}</p>
-              </button>
+              <Card key={p.id} className={pal === p.id ? 'ring-1 ring-white' : 'cursor-pointer'} onClick={() => setPal(p.id)}>
+                <CardContent className="pt-6">
+                  <div className="swatch" style={{ background: p.sw }} />
+                  <CardTitle>{p.label}</CardTitle>
+                  <CardDescription className="mt-2">{p.desc}</CardDescription>
+                </CardContent>
+              </Card>
             ))}
           </div>
         </section>
@@ -147,13 +166,15 @@ export default function Page() {
         <div id="vistas">
           {VISTAS.map((v, i) => (
             <section key={v.id} className={'vsec' + (i % 2 ? ' right' : '')}>
-              <div className="card">
-                <div className="num">0{i + 1} — LOCATION</div>
-                <div className="name">{v.label}</div>
-                <div className="sub">{v.sub}</div>
-                <p>{v.blurb} The camera already knows the way here — you just scrolled through it.</p>
-                <div className="credit">PHOTO {v.credit}</div>
-              </div>
+              <Card className="max-w-[340px]">
+                <CardContent className="pt-6">
+                  <div className="num">0{i + 1} — LOCATION</div>
+                  <div className="name">{v.label}</div>
+                  <div className="sub">{v.sub}</div>
+                  <p className="mt-4 text-xs leading-7 text-white/80">{v.blurb} The camera already knows the way here — you just scrolled through it.</p>
+                  <div className="credit">PHOTO {v.credit}</div>
+                </CardContent>
+              </Card>
             </section>
           ))}
         </div>
@@ -162,54 +183,81 @@ export default function Page() {
           <div className="sec-label">02 — EMBED</div>
           <h2>Drop it <em>in.</em></h2>
           <p className="lede">One iframe. No keys, no build step, no server. The valley runs itself — drift, sway, and light included.</p>
-          <pre className="snippet">{SNIPPET}</pre>
-          <div className="params">
-            <span>vista=tunnel-view|half-dome|bridalveil|el-capitan</span>
-            <span>palette=0-5</span>
-            <span>pixel=1-8</span>
-            <span>sun=day|sunset</span>
-            <span>spin=0|1</span>
-          </div>
-          <button className="cta copybtn" onClick={copySnippet}>{copied ? 'COPIED' : 'COPY SNIPPET'}</button>
+          <Card className="mt-6 max-w-[720px]">
+            <CardContent className="pt-5">
+              <pre className="snippet" style={{ marginTop: 0, border: 'none', background: 'transparent', padding: 0 }}>{SNIPPET}</pre>
+            </CardContent>
+            <CardFooter className="gap-2 flex-wrap">
+              <Button size="sm" onClick={copySnippet}>{copied ? 'COPIED' : 'COPY SNIPPET'}</Button>
+              {['vista=*', 'palette=0-5', 'pixel=1-8', 'sun=day|sunset', 'spin=0|1'].map((p) => (
+                <Badge key={p} variant="outline">{p}</Badge>
+              ))}
+            </CardFooter>
+          </Card>
         </section>
 
         <section className="pricing" id="pricing">
           <div className="sec-label">03 — PRICING</div>
           <h2>Start free.</h2>
           <div className="tiers">
-            <div className="tier">
-              <b>HOBBY</b>
-              <div className="price">$0</div>
-              <ul>
-                <li>1 live site</li>
-                <li>All 6 styles</li>
-                <li>Community locations</li>
-              </ul>
-            </div>
-            <div className="tier hot">
-              <b>STUDIO</b>
-              <div className="price">$19<span>/mo</span></div>
-              <ul>
-                <li>Unlimited sites</li>
-                <li>Day/sunset cycling</li>
-                <li>Custom locations</li>
-              </ul>
-            </div>
-            <div className="tier">
-              <b>SCALE</b>
-              <div className="price">Custom</div>
-              <ul>
-                <li>SLA + support</li>
-                <li>Private vistas</li>
-                <li>SSO + audit</li>
-              </ul>
-            </div>
+            <Card>
+              <CardHeader><CardTitle>HOBBY</CardTitle></CardHeader>
+              <CardContent>
+                <div className="price">$0</div>
+                <ul>
+                  <li>1 live site</li>
+                  <li>All 6 styles</li>
+                  <li>Community locations</li>
+                </ul>
+              </CardContent>
+              <CardFooter><Button variant="outline" className="w-full">START</Button></CardFooter>
+            </Card>
+            <Card className="ring-1 ring-white">
+              <CardHeader><CardTitle>STUDIO</CardTitle><Badge className="w-fit">POPULAR</Badge></CardHeader>
+              <CardContent>
+                <div className="price">$19<span>/mo</span></div>
+                <ul>
+                  <li>Unlimited sites</li>
+                  <li>Day/sunset cycling</li>
+                  <li>Custom locations</li>
+                </ul>
+              </CardContent>
+              <CardFooter><Button className="w-full">GO STUDIO</Button></CardFooter>
+            </Card>
+            <Card>
+              <CardHeader><CardTitle>SCALE</CardTitle></CardHeader>
+              <CardContent>
+                <div className="price">Custom</div>
+                <ul>
+                  <li>SLA + support</li>
+                  <li>Private vistas</li>
+                  <li>SSO + audit</li>
+                </ul>
+              </CardContent>
+              <CardFooter><Button variant="outline" className="w-full">TALK TO US</Button></CardFooter>
+            </Card>
           </div>
+        </section>
+
+        <section className="pricing" id="faq" style={{ paddingTop: 0 }}>
+          <div className="sec-label">04 — FAQ</div>
+          <h2>Asked, <em>answered.</em></h2>
+          <Card className="mt-6 max-w-[720px]">
+            <CardContent className="pt-2">
+              <Accordion type="single" collapsible>
+                <AccordionItem value="a"><AccordionTrigger>What is Valley?</AccordionTrigger><AccordionContent>An AI-designed backdrop engine. Living 3D landscapes in ordered Bayer dither, tuned per brand, embedded anywhere with one snippet.</AccordionContent></AccordionItem>
+                <AccordionItem value="b"><AccordionTrigger>How do I put it on my site?</AccordionTrigger><AccordionContent>Copy the iframe from the Embed section. No keys, no build step, no server. Params control vista, style, pixel size, and light.</AccordionContent></AccordionItem>
+                <AccordionItem value="c"><AccordionTrigger>What does it cost to run?</AccordionTrigger><AccordionContent>Almost nothing. One displaced relief plus one fullscreen dither pass holds 60 fps on integrated graphics, shipped as static files.</AccordionContent></AccordionItem>
+                <AccordionItem value="d"><AccordionTrigger>Can it show my own location?</AccordionTrigger><AccordionContent>Yes. Any photo becomes a vista: we bake a depth map, the relief follows, the dither does the rest. Studio plans include custom locations.</AccordionContent></AccordionItem>
+                <AccordionItem value="e"><AccordionTrigger>Who owns the imagery?</AccordionTrigger><AccordionContent>Yosemite photography is Creative Commons (Diliff, Dave Riggs, GualdimG via Wikimedia), credited on-page and in the repo.</AccordionContent></AccordionItem>
+              </Accordion>
+            </CardContent>
+          </Card>
         </section>
 
         <section className="closer">
           <h2>Put a valley behind <em>your launch.</em></h2>
-          <a href="#embed"><button className="cta">GET THE SNIPPET</button></a>
+          <a href="#embed"><Button size="lg">GET THE SNIPPET</Button></a>
         </section>
 
         <footer className="foot">

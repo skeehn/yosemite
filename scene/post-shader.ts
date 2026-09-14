@@ -13,6 +13,7 @@ uniform sampler2D tDepth;
 uniform vec2 u_res;
 uniform float u_camNear, u_camFar;
 uniform float u_pixelC, u_pixelF, u_split, u_soft;
+uniform float u_warm;
 uniform int u_bayerLog;
 uniform int u_mode;
 uniform float u_time;
@@ -105,6 +106,7 @@ void main(){
     }
   }
   if(linear){ col = pow(max(col, 0.0), vec3(0.4545)); }
+  if(u_mode != 5){ col = mix(col, col * vec3(1.07, 0.93, 0.80) + vec3(0.035, 0.012, 0.0), clamp(u_warm, 0.0, 1.0)); }
   vec2 ndc = vUv - 0.5;
   col *= mix(0.78, 1.0, smoothstep(0.65, 0.2, length(ndc)));
   col += (hash(gl_FragCoord.xy + fract(u_time)) - 0.5) * 0.035;

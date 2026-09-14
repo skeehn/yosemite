@@ -104,12 +104,14 @@ function PostPass({
   split,
   bayerLog,
   mode,
+  sun,
   onFps,
 }: {
   pixel: number;
   split: number;
   bayerLog: number;
   mode: number;
+  sun: SunMode;
   onFps: (n: number) => void;
 }) {
   const { gl, scene, camera, size, viewport } = useThree();
@@ -146,6 +148,7 @@ function PostPass({
         u_soft: { value: 2.5 },
         u_bayerLog: { value: 3 },
         u_mode: { value: 0 },
+        u_warm: { value: 0 },
         u_time: { value: 0 },
       },
       depthTest: false,
@@ -158,11 +161,12 @@ function PostPass({
   }, [rt]);
   useEffect(() => () => rt.dispose(), [rt]);
 
-  const pRef = useRef({ pixel, split, bayerLog, mode });
-  pRef.current = { pixel, split, bayerLog, mode };
+  const pRef = useRef({ pixel, split, bayerLog, mode, sun });
+  pRef.current = { pixel, split, bayerLog, mode, sun };
   const fpsRef = useRef({ frames: 0, last: performance.now(), t0: performance.now() });
   const cbRef = useRef(onFps);
   cbRef.current = onFps;
+  const warmRef = useRef(0);
 
   useFrame(() => {
     const p = pRef.current;
@@ -173,6 +177,8 @@ function PostPass({
     u.u_split.value = p.split;
     u.u_bayerLog.value = p.bayerLog;
     u.u_mode.value = p.mode;
+    warmRef.current += ((p.sun === 'sunset' ? 1 : 0) - warmRef.current) * 0.04;
+    u.u_warm.value = warmRef.current;
     u.u_time.value = (performance.now() - fpsRef.current.t0) / 1000;
     gl.setRenderTarget(rt);
     gl.render(scene, camera);
@@ -287,7 +293,7 @@ export default function ValleyScene(props: ValleySceneProps) {
         ) : (
           <ScrollPathRigExternal progress={scrollProgress} views={viewList} onChapter={onChapter} />
         ))}
-      <PostPass pixel={pixel} split={depthSplit} bayerLog={bayerLog} mode={palette} onFps={onFps} />
+      <PostPass pixel={pixel} split={depthSplit} bayerLog={bayerLog} mode={palette} sun={sun} onFps={onFps} />
     </Canvas>
   );
 }
