@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import './sections.css';
+import './blend.css';
 
 export const metadata: Metadata = {
   title: 'YOSEMITE — Tunnel View in 3D Bayer Dither',
