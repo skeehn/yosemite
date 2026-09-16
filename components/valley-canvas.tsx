@@ -49,13 +49,17 @@ void main() {
   float m = sin(puv.x * 9.0 + uTime * 0.12) * sin(puv.y * 23.0 - uTime * 0.09);
   g += m * 0.018 * (1.0 - d);
 
-  // ordered-dither quantization
-  float b = bayer8(gl_FragCoord.xy / uPixel);
-  g = floor(g * (uLevels - 1.0) + b * uDither) / (uLevels - 1.0);
+  // ordered-dither quantization: many levels + centered threshold
+  // keeps gradients smooth with visible dither grain instead of posterizing
+  float b = bayer8(gl_FragCoord.xy / uPixel) / 1.328125;
+  g = g * 0.965 + 0.035;          // lift shadows so darks keep detail
+  g += (d - 0.5) * 0.05;          // depth fill light on near detail
+  g = floor(g * (uLevels - 1.0) + (b - 0.5) * uDither) / (uLevels - 1.0);
+  g = clamp(g, 0.0, 1.0);
 
   // vignette
   vec2 q = vUv - 0.5;
-  g *= 1.0 - dot(q, q) * 0.55;
+  g *= 1.0 - dot(q, q) * 0.35;
   gl_FragColor = vec4(g, 1.0);
 }
 `;
@@ -90,16 +94,21 @@ export default function ValleyCanvas() {
       uDepth: { value: null as THREE.Texture | null },
       uRes: { value: new THREE.Vector2(1, 1) },
       uPixel: { value: PIXELS[1] },
-      uLevels: { value: 6 },
-      uDither: { value: 0.9 },
+      uLevels: { value: 16 },
+      uDither: { value: 1.0 },
       uSunset: { value: 0 },
       uTime: { value: 0 },
       uRelief: { value: 1.35 },
     };
     const mat = new THREE.ShaderMaterial({ uniforms, vertexShader: VERT, fragmentShader: FRAG });
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(16, 10, 200, 125), mat);
-    mesh.scale.setScalar(1.1);
     scene.add(mesh);
+
+    const cover = () => {
+      // plane is 16:10; scale up so it always covers wide viewports
+      const aspect = window.innerWidth / Math.max(window.innerHeight, 1);
+      mesh.scale.setScalar(Math.max(1.1, (aspect / 1.6) * 1.08));
+    };
 
     const manager = new THREE.LoadingManager();
     const loader = new THREE.TextureLoader(manager);
@@ -121,7 +130,8 @@ export default function ValleyCanvas() {
       uniforms.uRes.value.set(w, h);
     };
     resize();
-    window.addEventListener('resize', resize);
+    cover();
+    window.addEventListener('resize', () => { resize(); cover(); });
 
     const mouse = { x: 0, y: 0, tx: 0, ty: 0 };
     const onMouse = (e: PointerEvent) => {
