@@ -22,8 +22,6 @@ uniform sampler2D uColor;
 uniform sampler2D uDepth;
 uniform vec2 uRes;
 uniform float uPixel;
-uniform float uLevels;
-uniform float uDither;
 uniform float uSunset;
 uniform float uTime;
 varying vec2 vUv;
@@ -32,13 +30,28 @@ float bayer2(vec2 a) { a = floor(a); return fract(a.x / 2.0 + a.y * a.y * 0.75);
 float bayer4(vec2 a) { return bayer2(0.5 * a) * 0.25 + bayer2(a); }
 #define bayer8(a) (bayer4(0.5 * (a)) * 0.0625 + bayer4(a))
 
+vec3 rgb2hsv(vec3 c) {
+  vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
+  vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
+  vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));
+  float d = q.x - min(q.w, q.y);
+  float e = 1.0e-10;
+  return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);
+}
+vec3 hsv2rgb(vec3 c) {
+  vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+  vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+  return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+}
+
 void main() {
+  // chunky pixel grid, depth sampled on-grid so pixels and relief align
   vec2 grid = uRes / uPixel;
   vec2 puv = (floor(vUv * grid) + 0.5) / grid;
   float d = texture2D(uDepth, puv).r;
   vec3 c = texture2D(uColor, puv).rgb;
 
-  // day -> sunset grade, extra warmth in far (sky) areas
+  // day -> sunset grade
   vec3 warm = c * vec3(1.10, 0.86, 0.62);
   float sky = smoothstep(0.38, 0.04, d);
   warm = mix(warm, c * vec3(1.18, 0.70, 0.52) + vec3(0.10, 0.03, 0.0), sky * 0.65);
@@ -49,22 +62,23 @@ void main() {
   float m = sin(puv.x * 9.0 + uTime * 0.12) * sin(puv.y * 23.0 - uTime * 0.09);
   g += m * 0.018 * (1.0 - d);
 
-  // ordered-dither quantization: many levels + centered threshold
-  // keeps gradients smooth with visible dither grain instead of posterizing
+  // pixel-art posterize in HSV: 8 hues, boosted sat, 12 values —
+  // Bayer threshold keeps every band as grain, never stripes
   float b = bayer8(gl_FragCoord.xy / uPixel) / 1.328125;
-  g = g * 0.965 + 0.035;          // lift shadows so darks keep detail
-  g += (d - 0.5) * 0.05;          // depth fill light on near detail
-  g = floor(g * (uLevels - 1.0) + (b - 0.5) * uDither) / (uLevels - 1.0);
-  g = clamp(g, 0.0, 1.0);
+  vec3 hsv = rgb2hsv(clamp(g, 0.0, 1.0));
+  hsv.x = floor(hsv.x * 8.0 + b * 0.9) / 8.0;
+  hsv.y = clamp(hsv.y * 1.12, 0.0, 1.0);
+  hsv.z = floor(hsv.z * 12.0 + (b - 0.5) * 1.2) / 12.0;
+  g = hsv2rgb(hsv);
 
-  // vignette
+  g = g * 0.97 + 0.03 + (d - 0.5) * 0.05;
   vec2 q = vUv - 0.5;
-  g *= 1.0 - dot(q, q) * 0.35;
-  gl_FragColor = vec4(g, 1.0);
+  g *= 1.0 - dot(q, q) * 0.30;
+  gl_FragColor = vec4(clamp(g, 0.0, 1.0), 1.0);
 }
 `;
 
-const PIXELS = [2, 4, 6];
+const PIXELS = [3, 5, 8];
 const PIXEL_LABEL = ['fine', 'chunky', 'brutal'];
 
 export default function ValleyCanvas() {
@@ -94,18 +108,15 @@ export default function ValleyCanvas() {
       uDepth: { value: null as THREE.Texture | null },
       uRes: { value: new THREE.Vector2(1, 1) },
       uPixel: { value: PIXELS[1] },
-      uLevels: { value: 16 },
-      uDither: { value: 1.0 },
       uSunset: { value: 0 },
       uTime: { value: 0 },
-      uRelief: { value: 1.35 },
+      uRelief: { value: 1.6 },
     };
     const mat = new THREE.ShaderMaterial({ uniforms, vertexShader: VERT, fragmentShader: FRAG });
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(16, 10, 200, 125), mat);
     scene.add(mesh);
 
     const cover = () => {
-      // plane is 16:10; scale up so it always covers wide viewports
       const aspect = window.innerWidth / Math.max(window.innerHeight, 1);
       mesh.scale.setScalar(Math.max(1.1, (aspect / 1.6) * 1.08));
     };
@@ -180,53 +191,41 @@ export default function ValleyCanvas() {
     <>
       <div ref={host} className="valley-bg" aria-hidden />
       {!ready && (
-        <div className="valley-loader">
-          <span>developing valley…</span>
+        <div className="loader">
+          <span className="loader-mark">▲</span>
+          <span>developing valley</span>
         </div>
       )}
-      <div className={`valley-ui ${ready ? 'on' : ''}`}>
-        <header className="valley-top">
-          <span className="wordmark">VALLEY</span>
-          <div className="controls">
-            <button
-              className={sunset ? '' : 'active'}
-              onClick={() => setSunset(false)}
-              aria-pressed={!sunset}
-            >
-              day
-            </button>
-            <button
-              className={sunset ? 'active' : ''}
-              onClick={() => setSunset(true)}
-              aria-pressed={sunset}
-            >
-              sunset
-            </button>
-            <span className="sep" />
-            <button
-              onClick={() => setPixelIdx((pixelIdx + 1) % PIXELS.length)}
-              title="pixel size"
-            >
+      <div className={`chrome ${ready ? 'on' : ''}`}>
+        <header className="nav">
+          <span className="wordmark">
+            <span className="wordmark-mark">▲</span> valley
+          </span>
+          <div className="nav-ctl">
+            <div className="segment" role="group" aria-label="light">
+              <button className={sunset ? '' : 'active'} onClick={() => setSunset(false)} aria-pressed={!sunset}>
+                day
+              </button>
+              <button className={sunset ? 'active' : ''} onClick={() => setSunset(true)} aria-pressed={sunset}>
+                sunset
+              </button>
+            </div>
+            <button className="pill" onClick={() => setPixelIdx((pixelIdx + 1) % PIXELS.length)} title="pixel size">
               px:{PIXEL_LABEL[pixelIdx]}
             </button>
           </div>
         </header>
-        <div className="hero-copy">
-          <h1>Yosemite, alive</h1>
-          <p>
-            True-depth relief from a single photograph, quantized through an
-            8×8 Bayer matrix. Move to look around — scroll to push in.
+        <div className="hero">
+          <p className="eyebrow"><span className="tick" />yosemite valley — 37.73°n 119.57°w</p>
+          <h1>Yosemite,<br />alive.</h1>
+          <p className="sub">
+            True-depth relief under an 8×8 Bayer matrix.
+            Move to look around — scroll to push in.
           </p>
         </div>
-        <footer className="valley-foot">
+        <footer className="statusbar">
           <span className="scroll-hint">scroll ↓</span>
-          <a
-            href="https://commons.wikimedia.org/wiki/File:Tunnel_View_3,_Yosemite_Valley,_Yosemite_NP_-_Diliff.jpg"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Tunnel View — Diliff · CC BY-SA 3.0 · Wikimedia Commons
-          </a>
+          <span className="status mono">midas · bayer8 · {PIXEL_LABEL[pixelIdx]} {PIXELS[pixelIdx]}px</span>
         </footer>
       </div>
     </>
