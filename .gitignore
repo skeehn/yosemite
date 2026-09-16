@@ -1,5 +1,4 @@
 node_modules/
-dist/
-.wrangler/
-.DS_Store
-lib/build-id.ts
+.next/
+.vercel/
+.dev.vars
