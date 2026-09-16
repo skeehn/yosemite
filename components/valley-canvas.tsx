@@ -24,6 +24,7 @@ uniform vec2 uRes;
 uniform float uPixel;
 uniform float uSunset;
 uniform float uTime;
+uniform vec2 uDith;
 varying vec2 vUv;
 
 float bayer2(vec2 a) { a = floor(a); return fract(a.x / 2.0 + a.y * a.y * 0.75); }
@@ -62,16 +63,20 @@ void main() {
   float m = sin(puv.x * 9.0 + uTime * 0.12) * sin(puv.y * 23.0 - uTime * 0.09);
   g += m * 0.018 * (1.0 - d);
 
-  // pixel-art posterize in HSV: 8 hues, boosted sat, 12 values —
-  // Bayer threshold keeps every band as grain, never stripes
-  float b = bayer8(gl_FragCoord.xy / uPixel) / 1.328125;
+  // pixel-art posterize in HSV: 10 hues, gentle sat, 12 values.
+  // the Bayer field itself carries the parallax: mouse offsets the
+  // threshold cells, weighted by depth, so grain swims around near
+  // detail while far air holds still. the photo never warps.
+  vec2 cell = gl_FragCoord.xy / uPixel + uDith * (0.25 + d * 2.5);
+  float b = bayer8(cell) / 1.328125;
   vec3 hsv = rgb2hsv(clamp(g, 0.0, 1.0));
-  hsv.x = floor(hsv.x * 8.0 + b * 0.9) / 8.0;
-  hsv.y = clamp(hsv.y * 1.12, 0.0, 1.0);
-  hsv.z = floor(hsv.z * 12.0 + (b - 0.5) * 1.2) / 12.0;
+  hsv.x = floor(hsv.x * 10.0 + b * 0.6) / 10.0;
+  hsv.y = clamp(hsv.y * 1.06, 0.0, 1.0);
+  hsv.z = floor(hsv.z * 12.0 + (b - 0.5) * 0.8) / 12.0;
   g = hsv2rgb(hsv);
 
-  g = g * 0.97 + 0.03 + (d - 0.5) * 0.05;
+  // cool shadow floor so darks hold detail instead of voiding out
+  g = g * 0.93 + vec3(0.045, 0.05, 0.062) + (d - 0.5) * 0.05;
   vec2 q = vUv - 0.5;
   g *= 1.0 - dot(q, q) * 0.30;
   gl_FragColor = vec4(clamp(g, 0.0, 1.0), 1.0);
@@ -83,6 +88,7 @@ const PIXEL_LABEL = ['fine', 'chunky', 'brutal'];
 
 export default function ValleyCanvas() {
   const host = useRef<HTMLDivElement>(null);
+  const hero = useRef<HTMLDivElement>(null);
   const [ready, setReady] = useState(false);
   const [sunset, setSunset] = useState(false);
   const [pixelIdx, setPixelIdx] = useState(1);
@@ -110,6 +116,7 @@ export default function ValleyCanvas() {
       uPixel: { value: PIXELS[1] },
       uSunset: { value: 0 },
       uTime: { value: 0 },
+      uDith: { value: new THREE.Vector2(0, 0) },
       uRelief: { value: 1.6 },
     };
     const mat = new THREE.ShaderMaterial({ uniforms, vertexShader: VERT, fragmentShader: FRAG });
@@ -150,6 +157,16 @@ export default function ValleyCanvas() {
       mouse.ty = (e.clientY / window.innerHeight - 0.5) * 2;
     };
     window.addEventListener('pointermove', onMouse);
+    const onScroll = () => {
+      // hero copy dissolves before the spec panel slides over it
+      const f = Math.max(0, 1 - window.scrollY / (window.innerHeight * 0.45));
+      if (hero.current) {
+        hero.current.style.opacity = String(f);
+        hero.current.style.transform = `translateY(${(1 - f) * -30}px)`;
+      }
+    };
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
 
     const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const clock = new THREE.Clock();
@@ -161,11 +178,15 @@ export default function ValleyCanvas() {
       mouse.x += (mouse.tx - mouse.x) * 0.045;
       mouse.y += (mouse.ty - mouse.y) * 0.045;
       const scroll = Math.min(window.scrollY / Math.max(window.innerHeight, 1), 1);
-      const sway = still ? 0 : Math.sin(t * 0.22) * 0.12;
-      camera.position.x = mouse.x * 0.55 + sway;
-      camera.position.y = -mouse.y * 0.35 - scroll * 0.9 + (still ? 0 : Math.sin(t * 0.17) * 0.07);
+      // the photo holds still: only a faint idle breath + scroll push-in.
+      // parallax lives in the dither field, weighted by depth.
+      const sway = still ? 0 : Math.sin(t * 0.22) * 0.05;
+      camera.position.x = sway;
+      camera.position.y = -scroll * 0.9 + (still ? 0 : Math.sin(t * 0.17) * 0.03);
       camera.position.z = 9.6 - scroll * 0.9;
       camera.lookAt(0, -scroll * 0.4, 0);
+      uniforms.uDith.value.x += (mouse.x - uniforms.uDith.value.x) * 0.06;
+      uniforms.uDith.value.y += (-mouse.y - uniforms.uDith.value.y) * 0.06;
       const target = ctl.current.sunset ? 1 : 0;
       uniforms.uSunset.value += (target - uniforms.uSunset.value) * 0.04;
       uniforms.uPixel.value = ctl.current.pixel;
@@ -178,6 +199,7 @@ export default function ValleyCanvas() {
       cancelAnimationFrame(raf);
       window.removeEventListener('resize', resize);
       window.removeEventListener('pointermove', onMouse);
+      window.removeEventListener('scroll', onScroll);
       mesh.geometry.dispose();
       mat.dispose();
       color.dispose();
@@ -215,7 +237,7 @@ export default function ValleyCanvas() {
             </button>
           </div>
         </header>
-        <div className="hero">
+        <div className="hero" ref={hero}>
           <p className="eyebrow"><span className="tick" />yosemite valley — 37.73°n 119.57°w</p>
           <h1>Yosemite,<br />alive.</h1>
           <p className="sub">
