@@ -1,6 +1,6 @@
 :root {
-  --bg: #000;
-  --fg: #fafafa;
+  --bg: #0e0e10;
+  --fg: #f8f8f8;
   --muted: #a1a1aa;
   --line: rgba(255, 255, 255, .09);
   --accent: #ff5c1a;
@@ -39,7 +39,7 @@ body { font-family: var(--sans); -webkit-font-smoothing: antialiased; }
   padding: 0 24px; height: 64px; border-bottom: 1px solid var(--line);
   backdrop-filter: blur(2px);
 }
-.wordmark { font-weight: 600; font-size: 15px; letter-spacing: -.01em; display: flex; gap: 8px; align-items: center; }
+.wordmark { font-weight: 650; font-size: 17px; letter-spacing: .02em; display: flex; gap: 8px; align-items: center; }
 .wordmark-mark { font-size: 11px; }
 .nav-ctl { display: flex; gap: 10px; align-items: center; }
 .segment {

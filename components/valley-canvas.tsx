@@ -70,13 +70,13 @@ void main() {
   vec2 cell = gl_FragCoord.xy / uPixel + uDith * (0.25 + d * 2.5);
   float b = bayer8(cell) / 1.328125;
   vec3 hsv = rgb2hsv(clamp(g, 0.0, 1.0));
-  hsv.x = floor(hsv.x * 10.0 + b * 0.6) / 10.0;
-  hsv.y = clamp(hsv.y * 1.06, 0.0, 1.0);
-  hsv.z = floor(hsv.z * 12.0 + (b - 0.5) * 0.8) / 12.0;
+  hsv.x = floor(hsv.x * 6.0 + b * 0.6) / 6.0;
+  hsv.y = clamp(hsv.y * 1.05, 0.0, 1.0);
+  hsv.z = floor(hsv.z * 8.0 + (b - 0.5) * 0.8) / 8.0;
   g = hsv2rgb(hsv);
 
-  // cool shadow floor so darks hold detail instead of voiding out
-  g = g * 0.93 + vec3(0.045, 0.05, 0.062) + (d - 0.5) * 0.05;
+  // cool gray floor (not pure black) + lighter shadow so dark details hold
+  g = g * 0.95 + vec3(0.10, 0.10, 0.12) + (d - 0.5) * 0.05;
   vec2 q = vUv - 0.5;
   g *= 1.0 - dot(q, q) * 0.30;
   gl_FragColor = vec4(clamp(g, 0.0, 1.0), 1.0);
@@ -113,7 +113,7 @@ export default function ValleyCanvas() {
       uColor: { value: null as THREE.Texture | null },
       uDepth: { value: null as THREE.Texture | null },
       uRes: { value: new THREE.Vector2(1, 1) },
-      uPixel: { value: PIXELS[1] },
+      uPixel: { value: PIXELS[2] },
       uSunset: { value: 0 },
       uTime: { value: 0 },
       uDith: { value: new THREE.Vector2(0, 0) },
@@ -180,7 +180,7 @@ export default function ValleyCanvas() {
       const scroll = Math.min(window.scrollY / Math.max(window.innerHeight, 1), 1);
       // the photo holds still: only a faint idle breath + scroll push-in.
       // parallax lives in the dither field, weighted by depth.
-      const sway = still ? 0 : Math.sin(t * 0.22) * 0.05;
+      const sway = still ? 0 : Math.sin(t * 0.22) * 0.15;
       camera.position.x = sway;
       camera.position.y = -scroll * 0.9 + (still ? 0 : Math.sin(t * 0.17) * 0.03);
       camera.position.z = 9.6 - scroll * 0.9;
